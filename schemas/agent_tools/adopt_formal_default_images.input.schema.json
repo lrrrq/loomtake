@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "FormalDefaultImageSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Sha256"
+        },
+        "media_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+          "title": "Media Id",
+          "type": "string"
+        },
+        "shot_no": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Shot No",
+          "type": "string"
+        },
+        "sources": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sources"
+        }
+      },
+      "required": [
+        "shot_no",
+        "media_id"
+      ],
+      "title": "FormalDefaultImageSelection",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "allowed_shot_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+            "type": "string"
+          },
+          "maxItems": 400,
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Allowed Shot Ids"
+    },
+    "expected_project_version": {
+      "minimum": 0,
+      "title": "Expected Project Version",
+      "type": "integer"
+    },
+    "expected_script_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Script Revision"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "package_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Package Manifest Sha256",
+      "type": "string"
+    },
+    "package_version": {
+      "exclusiveMinimum": 0,
+      "title": "Package Version",
+      "type": "integer"
+    },
+    "pending_shot_count": {
+      "default": 0,
+      "maximum": 400,
+      "minimum": 0,
+      "title": "Pending Shot Count",
+      "type": "integer"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "selections": {
+      "items": {
+        "$ref": "#/$defs/FormalDefaultImageSelection"
+      },
+      "maxItems": 400,
+      "minItems": 1,
+      "title": "Selections",
+      "type": "array"
+    },
+    "source_scope_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Scope Sha256"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "project_id",
+    "expected_project_version",
+    "package_id",
+    "package_version",
+    "package_manifest_sha256",
+    "selections"
+  ],
+  "title": "AdoptFormalDefaultImagesInput",
+  "type": "object"
+}

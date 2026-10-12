@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "FormalScriptRevisionOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "anyOf": [
+            {
+              "enum": [
+                "structure",
+                "camera_type",
+                "shot_size",
+                "camera_move",
+                "duration_seconds",
+                "visual",
+                "sound",
+                "voiceover",
+                "subtitle",
+                "notes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "operation": {
+          "enum": [
+            "replace_field",
+            "clear_optional_field",
+            "delete_shot"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "shot_no": {
+          "pattern": "^[1-9][0-9]*$",
+          "title": "Shot No",
+          "type": "string"
+        },
+        "value": {
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "operation",
+        "shot_no"
+      ],
+      "title": "FormalScriptRevisionOperation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "base_version_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Base Version Id",
+      "type": "string"
+    },
+    "draft_only": {
+      "default": false,
+      "title": "Draft Only",
+      "type": "boolean"
+    },
+    "entrypoint": {
+      "default": "direct",
+      "enum": [
+        "direct",
+        "table",
+        "review",
+        "assistant",
+        "history"
+      ],
+      "title": "Entrypoint",
+      "type": "string"
+    },
+    "expected_progress_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Progress Revision"
+    },
+    "expected_project_version": {
+      "minimum": 0,
+      "title": "Expected Project Version",
+      "type": "integer"
+    },
+    "expected_revision": {
+      "minimum": 0,
+      "title": "Expected Revision",
+      "type": "integer"
+    },
+    "feedback_kind": {
+      "enum": [
+        "copy",
+        "structure",
+        "image",
+        "fact"
+      ],
+      "title": "Feedback Kind",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "image_snapshot_digest": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Image Snapshot Digest"
+    },
+    "materialize_existing_draft": {
+      "default": false,
+      "title": "Materialize Existing Draft",
+      "type": "boolean"
+    },
+    "operation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FormalScriptRevisionOperation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "operations": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/FormalScriptRevisionOperation"
+          },
+          "maxItems": 100,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operations"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "project_id",
+    "expected_project_version",
+    "base_version_id",
+    "expected_revision",
+    "feedback_kind"
+  ],
+  "title": "ApplyFormalScriptRevisionInput",
+  "type": "object"
+}

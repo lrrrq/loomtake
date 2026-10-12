@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "category_id": {
+      "pattern": "^[a-z][a-z0-9_-]{1,63}$",
+      "title": "Category Id",
+      "type": "string"
+    },
+    "filters": {
+      "additionalProperties": true,
+      "title": "Filters",
+      "type": "object"
+    },
+    "query": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    }
+  },
+  "required": [
+    "category_id",
+    "query"
+  ],
+  "title": "SearchAssetsInput",
+  "type": "object"
+}

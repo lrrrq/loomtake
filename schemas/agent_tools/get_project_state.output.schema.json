@@ -1,0 +1,100 @@
+{
+  "$defs": {
+    "ToolError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "INVALID_INPUT",
+            "NOT_FOUND",
+            "REVIEW_REQUIRED",
+            "PERMISSION_DENIED",
+            "WORKSPACE_VERSION_CONFLICT",
+            "PROJECT_VERSION_CONFLICT",
+            "PACKAGE_VERSION_CONFLICT",
+            "KNOWLEDGE_VERSION_CONFLICT",
+            "IDEMPOTENCY_CONFLICT",
+            "BRIEF_ARTIFACT_UNAVAILABLE",
+            "RECOVERY_RECONCILIATION_REQUIRED",
+            "TOOL_TIMEOUT",
+            "CANCELLED",
+            "INTERNAL_ERROR"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ToolError",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifact Refs",
+      "type": "array"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "accepted",
+        "blocked",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "task_id": {
+      "pattern": "^task_[A-Za-z0-9_-]{8,120}$",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "task_id",
+    "status"
+  ],
+  "title": "ToolExecutionResult",
+  "type": "object"
+}

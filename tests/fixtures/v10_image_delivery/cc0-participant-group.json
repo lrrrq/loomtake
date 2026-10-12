@@ -1,0 +1,19 @@
+{
+  "fixture_id": "cc0-participant-group-002",
+  "filename": "cc0-participant-group.jpg",
+  "sha256": "1951f80c3c367b76b6b1ebd301a9822bc4fe8880489946157e12b2328306e692",
+  "original_file_sha256": "1951f80c3c367b76b6b1ebd301a9822bc4fe8880489946157e12b2328306e692",
+  "source_kind": "cc0_public_group_photo_fixture",
+  "source": "Wikimedia Commons, File:Participant Group picture.jpg, https://commons.wikimedia.org/wiki/File:Participant_Group_picture.jpg",
+  "original_file_url": "https://upload.wikimedia.org/wikipedia/commons/a/a0/Participant_Group_picture.jpg",
+  "author": "LikamboisaacK",
+  "license": "CC0 1.0 Universal Public Domain Dedication; the Commons file page identifies this as the uploader's own work and allows copying, modification, distribution, and commercial use without permission.",
+  "rights_notice": "Redistributable CC0 repository test fixture; no M+ client or project material. The fixture is used only to test a multi-person group-photo shot semantic.",
+  "analysis": {
+    "status": "pass",
+    "caption": "多人参与者面向镜头的集体合影。",
+    "tags": ["group_photo", "conference_participants", "people", "full_gathering"],
+    "semantic_status": "human_confirmed",
+    "semantic_review_note": "Fixture reviewer visually confirmed a real multi-person posed group photograph; this field is limited to fixture semantic evidence and is not a final quality confirmation."
+  }
+}

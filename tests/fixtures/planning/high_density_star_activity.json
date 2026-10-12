@@ -1,0 +1,25 @@
+{
+  "brief": {
+    "项目名称": "匿名明星活动",
+    "项目区域文件名": "匿名明星活动.xlsx",
+    "脚本类型": "明星活动",
+    "品牌或客户": "匿名品牌",
+    "行业或活动类别": "品牌明星活动",
+    "视频时长": "20s",
+    "风格调性": "克制、真实",
+    "必须出现的内容": "入场签到、空间建立、嘉宾亮相、产品互动、品牌落版",
+    "禁忌或不能出现的内容": "不虚构嘉宾身份",
+    "Brief来源文件": "anonymous-brief.xlsx",
+    "Brief来源 sheet": "Brief",
+    "Brief来源行": 2,
+    "Brief来源 SHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "Brief来源证据": "入场签到、空间建立、嘉宾亮相、产品互动、品牌落版",
+    "planning_events": [
+      {"title": "入场签到", "evidence": "Brief明确要求入场签到"},
+      {"title": "空间建立", "evidence": "Brief明确要求空间建立"},
+      {"title": "嘉宾亮相", "evidence": "Brief明确要求嘉宾亮相"},
+      {"title": "产品互动", "evidence": "Brief明确要求产品互动"},
+      {"title": "品牌落版", "evidence": "Brief明确要求品牌落版"}
+    ]
+  }
+}

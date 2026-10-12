@@ -1,0 +1,431 @@
+{
+  "schema_version": "mplus-categories/v1",
+  "items": [
+    {
+      "category_id": "launch",
+      "display_name": "发布会",
+      "source_workbook_name": "M+发布会类通用脚本库.xlsx",
+      "source_sheet_names": [
+        "模版",
+        "创意库",
+        "AI_规范表"
+      ],
+      "dynamic_shot_count": true,
+      "workbook_glob": "M+发布会类通用脚本库*.xlsx",
+      "aliases": [
+        "launch",
+        "发布会类"
+      ],
+      "planning_profile": "launch_slot_contract",
+      "audit_profile": "launch_document_contract",
+      "duration_policy": "fixed_60_seconds",
+      "cross_category_sources": false,
+      "structural_arcs": [
+        [
+          1,
+          4,
+          "开场造势",
+          [
+            "atmosphere",
+            "space",
+            "arrival",
+            "brand"
+          ]
+        ],
+        [
+          5,
+          9,
+          "人气与现场互动",
+          [
+            "crowd",
+            "interaction",
+            "tour"
+          ]
+        ],
+        [
+          10,
+          15,
+          "核心宣讲与仪式",
+          [
+            "speech",
+            "ceremony",
+            "performance"
+          ]
+        ],
+        [
+          16,
+          17,
+          "品牌落版",
+          [
+            "brand",
+            "closing"
+          ]
+        ]
+      ],
+      "pacing_profile": "launch_60s"
+    },
+    {
+      "category_id": "exhibition",
+      "display_name": "展会",
+      "source_workbook_name": "M+展会类通用脚本库.xlsx",
+      "source_sheet_names": [
+        "模版",
+        "创意库",
+        "AI_规范表"
+      ],
+      "dynamic_shot_count": true,
+      "workbook_glob": "M+展会类通用脚本库*.xlsx",
+      "aliases": [
+        "exhibition",
+        "展会类"
+      ],
+      "planning_profile": "ai_spec_function_contract",
+      "audit_profile": "data_driven_category_contract",
+      "duration_policy": "positive_integer_seconds",
+      "cross_category_sources": false,
+      "structural_arcs": [
+        [
+          1,
+          5,
+          "氛围造镜",
+          [
+            "atmosphere",
+            "space",
+            "arrival"
+          ]
+        ],
+        [
+          6,
+          11,
+          "空间巡游",
+          [
+            "space",
+            "tour",
+            "brand"
+          ]
+        ],
+        [
+          12,
+          14,
+          "核心发布",
+          [
+            "speech",
+            "ceremony",
+            "performance"
+          ]
+        ],
+        [
+          15,
+          17,
+          "互动体验",
+          [
+            "interaction",
+            "crowd"
+          ]
+        ],
+        [
+          18,
+          19,
+          "收官",
+          [
+            "brand",
+            "closing"
+          ]
+        ]
+      ],
+      "pacing_profile": "even"
+    },
+    {
+      "category_id": "annual",
+      "display_name": "年会",
+      "source_workbook_name": "M+年会类通用脚本库.xlsx",
+      "source_sheet_names": [
+        "模版",
+        "创意库",
+        "AI_规范表"
+      ],
+      "dynamic_shot_count": true,
+      "workbook_glob": "M+年会类通用脚本库*.xlsx",
+      "aliases": [
+        "annual",
+        "年会类"
+      ],
+      "planning_profile": "ai_spec_function_contract",
+      "audit_profile": "data_driven_category_contract",
+      "duration_policy": "positive_integer_seconds",
+      "cross_category_sources": false,
+      "structural_arcs": [
+        [
+          1,
+          4,
+          "氛围造境",
+          [
+            "atmosphere",
+            "space",
+            "arrival"
+          ]
+        ],
+        [
+          5,
+          10,
+          "嘉年华互动",
+          [
+            "interaction",
+            "crowd",
+            "performance"
+          ]
+        ],
+        [
+          11,
+          19,
+          "颁奖典礼",
+          [
+            "ceremony",
+            "speech",
+            "performance"
+          ]
+        ],
+        [
+          20,
+          25,
+          "派对狂欢",
+          [
+            "performance",
+            "crowd",
+            "closing"
+          ]
+        ]
+      ],
+      "pacing_profile": "even"
+    },
+    {
+      "category_id": "sports",
+      "display_name": "赛事",
+      "source_workbook_name": "M+赛事类通用脚本库.xlsx",
+      "source_sheet_names": [
+        "模版",
+        "创意库",
+        "AI_规范表"
+      ],
+      "dynamic_shot_count": true,
+      "workbook_glob": "M+赛事类通用脚本库*.xlsx",
+      "aliases": [
+        "sports",
+        "赛事类"
+      ],
+      "planning_profile": "ai_spec_function_contract",
+      "audit_profile": "data_driven_category_contract",
+      "duration_policy": "positive_integer_seconds",
+      "cross_category_sources": false,
+      "structural_arcs": [
+        [
+          1,
+          3,
+          "开场氛围",
+          [
+            "atmosphere",
+            "space",
+            "arrival"
+          ]
+        ],
+        [
+          4,
+          8,
+          "装置打卡",
+          [
+            "interaction",
+            "brand",
+            "tour"
+          ]
+        ],
+        [
+          9,
+          14,
+          "竞技瞬间",
+          [
+            "performance",
+            "crowd"
+          ]
+        ],
+        [
+          15,
+          19,
+          "应援互动",
+          [
+            "interaction",
+            "crowd",
+            "talent_interaction"
+          ]
+        ],
+        [
+          20,
+          22,
+          "品牌落版",
+          [
+            "brand",
+            "closing"
+          ]
+        ]
+      ],
+      "pacing_profile": "even"
+    },
+    {
+      "category_id": "music_festival",
+      "display_name": "音乐节",
+      "source_workbook_name": "M+音乐节通用脚本库.xlsx",
+      "source_sheet_names": [
+        "模版",
+        "创意库",
+        "AI_规范表"
+      ],
+      "dynamic_shot_count": true,
+      "workbook_glob": "M+音乐节*通用脚本库*.xlsx",
+      "aliases": [
+        "music_festival",
+        "music-festival",
+        "音乐节类"
+      ],
+      "planning_profile": "ai_spec_function_contract",
+      "audit_profile": "data_driven_category_contract",
+      "duration_policy": "positive_integer_seconds",
+      "cross_category_sources": false,
+      "structural_arcs": [
+        [
+          1,
+          5,
+          "开场氛围",
+          [
+            "atmosphere",
+            "space",
+            "arrival"
+          ]
+        ],
+        [
+          6,
+          9,
+          "演出前奏",
+          [
+            "performance",
+            "brand"
+          ]
+        ],
+        [
+          10,
+          12,
+          "装置互动",
+          [
+            "interaction",
+            "tour"
+          ]
+        ],
+        [
+          13,
+          15,
+          "人气造势",
+          [
+            "crowd",
+            "interaction"
+          ]
+        ],
+        [
+          16,
+          17,
+          "夜幕狂欢",
+          [
+            "performance",
+            "crowd"
+          ]
+        ],
+        [
+          18,
+          18,
+          "落版",
+          [
+            "closing"
+          ]
+        ]
+      ],
+      "pacing_profile": "even"
+    },
+    {
+      "category_id": "star_activity",
+      "display_name": "明星活动",
+      "source_workbook_name": "M+明星活动类通用脚本库.xlsx",
+      "source_sheet_names": [
+        "模版",
+        "创意库",
+        "AI_规范表"
+      ],
+      "dynamic_shot_count": true,
+      "workbook_glob": "M+明星活动类通用脚本库*.xlsx",
+      "aliases": [
+        "star_activity",
+        "star-activity",
+        "明星活动类"
+      ],
+      "planning_profile": "ai_spec_function_contract",
+      "audit_profile": "data_driven_category_contract",
+      "duration_policy": "positive_integer_seconds",
+      "cross_category_sources": false,
+      "structural_arcs": [
+        [
+          1,
+          3,
+          "氛围造镜",
+          [
+            "atmosphere",
+            "space",
+            "arrival"
+          ]
+        ],
+        [
+          4,
+          7,
+          "空间巡游",
+          [
+            "space",
+            "tour",
+            "brand"
+          ]
+        ],
+        [
+          8,
+          10,
+          "人气造势",
+          [
+            "crowd",
+            "interaction"
+          ]
+        ],
+        [
+          11,
+          13,
+          "艺人亮相",
+          [
+            "talent_arrival",
+            "talent_interaction"
+          ]
+        ],
+        [
+          14,
+          17,
+          "核心仪式",
+          [
+            "ceremony",
+            "performance",
+            "speech"
+          ]
+        ],
+        [
+          18,
+          18,
+          "落版",
+          [
+            "closing"
+          ]
+        ]
+      ],
+      "pacing_profile": "even"
+    }
+  ]
+}

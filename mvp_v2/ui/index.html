@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="mplus-ui-build" content="__MPLUS_UI_BUILD__" />
+    <title>Loomtake 脚本工作台</title>
+    <link rel="stylesheet" href="/assets/app.css?v=__MPLUS_UI_BUILD__" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">Loomtake</div>
+          <div>
+            <span>LOOMTAKE</span>
+            <strong>脚本工作台</strong>
+          </div>
+        </div>
+
+        <nav class="nav-list workspace-nav" aria-label="工作区导航">
+          <a class="nav-item active" href="/projects" data-route="projects"><span>项目</span></a>
+          <a class="nav-item" href="/tasks" data-route="tasks"><span>任务</span></a>
+          <a class="nav-item" href="/tools" data-route="tools"><span>工具与资源</span></a>
+          <a class="nav-item" id="formal-admin-link" href="/admin" data-route="admin" hidden><span>管理员后台</span></a>
+        </nav>
+
+        <section class="project-nav-shell" id="formal-project-navigation" aria-label="当前项目导航" hidden>
+          <div class="project-nav-context"><span>当前项目</span><strong id="formal-nav-project-name">—</strong><small id="formal-nav-project-state">—</small></div>
+          <a class="project-exit" href="/projects" data-route="projects">退出项目</a>
+          <nav class="nav-list project-nav" aria-label="项目功能"><a class="nav-item" href="/projects" data-route="overview"><span>项目概览</span></a>
+            <a class="nav-item" href="/projects" data-route="brief"><span>需求</span></a>
+            <a class="nav-item" href="/projects" data-route="script"><span>创作</span></a>
+            <a class="nav-item" href="/projects" data-route="review"><span>审核与交付</span></a>
+          </nav>
+          <nav class="nav-list project-nav project-nav-aux" aria-label="项目辅助功能"><a class="nav-item" href="/projects" data-route="materials"><span>图库与素材</span></a><a class="nav-item" href="/projects" data-route="assistant"><span>项目助手</span></a></nav>
+        </section>
+
+        <div class="sidebar-foot">
+          <span class="live-dot"></span>
+          <div><strong>本地模式</strong><small>当前工作区的资料与版本</small></div>
+        </div>
+      </aside>
+
+      <main class="workspace" id="main-content" tabindex="-1">
+        <header class="mobile-head">
+          <div class="brand-mark">Loomtake</div>
+          <div><strong>脚本工作台</strong><small id="formal-mobile-context">工作区</small></div>
+          <a href="/projects" id="formal-mobile-exit" data-route="projects" hidden>退出项目</a>
+          <details class="mobile-project-menu" id="formal-mobile-menu" hidden>
+            <summary>菜单</summary>
+            <nav aria-label="移动端项目功能"><a href="/projects" data-route="overview">项目概览</a><a href="/projects" data-route="brief">需求</a><a href="/projects" data-route="script">创作</a><a href="/projects" data-route="review">审核与交付</a><a href="/projects" data-route="materials">图库与素材</a><a href="/projects" data-route="assistant">项目助手</a><a href="/tasks">全部任务</a><a href="/tools">工具与资源</a></nav>
+          </details>
+        </header>
+
+        <nav class="unified-breadcrumb" id="formal-breadcrumb" aria-label="面包屑" hidden>
+          <a href="/projects" data-route="projects">项目</a><span aria-hidden="true">/</span><a href="/projects" id="formal-breadcrumb-project" data-route="overview">当前项目</a><span aria-hidden="true">/</span><strong id="formal-breadcrumb-page">概览</strong>
+        </nav>
+
+        <section id="workbench-context" class="workbench-context" hidden aria-label="工具项目上下文"><div><span>当前项目</span><strong id="workbench-context-name">未选择项目</strong><p id="workbench-context-status" role="status"></p></div><label id="tools-project-control"><span>选择项目</span><select id="tools-project-select"><option value="">请选择项目</option></select></label><a class="text-button" id="workbench-return" href="/tools">返回工具与资源</a></section>
+
+        <aside class="ui00-update-banner" id="ui-update-banner" role="status" hidden><strong id="ui-update-copy">页面已更新</strong><div><button class="secondary-button compact" type="button" data-ui-update-later>稍后</button><button class="primary-button compact" type="button" data-ui-update-refresh>刷新页面</button></div></aside>
+
+        <aside class="ui00-archive-banner" id="formal-archive-banner" role="status" hidden>
+          <div><strong>项目已归档</strong><p id="formal-archive-banner-copy">项目已归档。内容仍可查看；恢复后才能继续修改。</p></div>
+          <a class="secondary-button compact" id="formal-archive-manage" href="/projects" data-route="overview">查看归档设置</a>
+        </aside>
+
+        <section class="page" id="page-projects" aria-labelledby="projects-title">
+          <div class="section-head row">
+            <div><h1 id="projects-title">项目</h1><p id="projects-copy">创建项目，或继续最近的工作。</p></div>
+            <a class="primary-button compact" id="formal-project-new" href="/projects/new" data-route="new">新建项目</a>
+          </div>
+          <section class="ui00-onboarding" id="formal-owner-onboarding" aria-live="polite" hidden>
+            <div><span class="eyebrow">本机工作区</span><h2>在这台电脑启用 Loomtake 工作区</h2><p>进入后可创建项目、整理需求资料，并继续之前的工作。</p><small>仅在这台电脑恢复工作区访问。</small></div>
+            <label class="agent-confirm" for="formal-owner-confirm"><input id="formal-owner-confirm" name="formal_owner_confirm" type="checkbox" /><span id="formal-owner-confirm-copy">我确认在这台电脑启用工作区</span></label>
+            <button class="primary-button" id="formal-owner-enable" type="button" disabled>启用并进入工作区</button>
+          </section>
+          <form class="ui00-project-create" id="formal-project-create" hidden>
+            <label for="formal-project-name"><span>项目名称</span><input id="formal-project-name" name="project_name" autocomplete="off" maxlength="120" required placeholder="例：秋季新品发布会" /></label>
+
+            <div><button class="primary-button compact" id="formal-project-create-submit" type="submit">创建项目</button><button class="secondary-button compact" id="formal-project-create-cancel" type="button">取消</button></div>
+          </form>
+          <div class="ui00-toolbar" id="formal-project-toolbar"><label for="formal-project-search"><span class="visually-hidden">搜索项目</span><input id="formal-project-search" name="project_search" autocomplete="off" spellcheck="false" placeholder="搜索项目" /></label></div>
+          <div class="ui00-dashboard" id="formal-project-dashboard">
+            <section class="ui00-panel"><div class="panel-kicker"><span>最近项目</span><b id="formal-project-count">—</b></div><div id="formal-project-list" class="ui00-project-list" aria-live="polite">正在读取项目…</div></section>
+            <details class="ui00-panel project-archive-list"><summary>已归档 <b id="formal-archived-count">—</b></summary><div id="formal-archived-list" class="ui00-project-list" aria-live="polite">正在读取归档项目…</div></details>
+            <section class="ui00-panel ui00-wide"><div class="panel-kicker"><span>任务状态</span><b>项目任务</b></div><div id="home-task-summary" aria-live="polite">任务尚未读取。</div></section>
+          </div>
+        </section>
+
+        <section class="page" id="page-overview" aria-labelledby="overview-title">
+          <div class="section-head row"><div><h1 id="overview-title">项目概览</h1><p>查看项目进度、阻断原因和下一步。</p></div><a class="secondary-button compact" href="/projects" data-route="brief">进入 Brief 与资料</a></div>
+          <div class="ui00-overview" id="formal-overview-state">请先从项目列表进入项目。</div>
+          <details class="ui00-lifecycle" id="formal-project-lifecycle" hidden aria-labelledby="formal-lifecycle-title"><summary>归档与恢复</summary>
+            <div class="panel-kicker"><span>项目管理</span><b id="formal-lifecycle-state">读取中</b></div>
+            <div class="ui00-lifecycle-head"><div><h2 id="formal-lifecycle-title">归档与恢复</h2><p id="formal-lifecycle-copy">归档只切换项目状态，不删除或覆盖任何业务资料。</p></div><span class="agent-mode-stamp">需确认</span></div>
+            <form id="formal-lifecycle-form">
+              <label for="formal-lifecycle-reason"><span>操作原因</span><textarea id="formal-lifecycle-reason" name="lifecycle_reason" rows="3" maxlength="500" required placeholder="例如：项目已完成，暂时退出进行中列表"></textarea></label>
+              <button class="secondary-button" id="formal-lifecycle-prepare" type="submit">准备归档</button>
+            </form>
+            <section class="ui00-lifecycle-confirm" id="formal-lifecycle-confirm" hidden tabindex="-1">
+              <div><span>确认前核对</span><strong id="formal-lifecycle-confirm-title">确认项目状态变更</strong><p id="formal-lifecycle-will-change"></p><p id="formal-lifecycle-will-not-change"></p></div>
+              <label class="agent-confirm" for="formal-lifecycle-confirm-check"><input id="formal-lifecycle-confirm-check" type="checkbox" /> <span id="formal-lifecycle-confirm-label">我已核对并确认</span></label>
+              <div class="ui00-inline-actions"><button class="primary-button" id="formal-lifecycle-execute" type="button" disabled>确认执行</button><button class="secondary-button" id="formal-lifecycle-cancel" type="button">取消</button></div>
+            </section>
+            <p class="ui00-lifecycle-foot">永久物理清理尚未开放。超过 30 天后项目仍保留并可读取，不会自动删除。</p>
+          </details>
+        </section>
+
+        <section class="page" id="page-brief" aria-labelledby="formal-brief-title">
+          <div class="section-head row"><div><h1 id="formal-brief-title">需求工作区</h1><p>和助手一起理清需求，确认后开始创作。</p></div><span class="agent-mode-stamp" id="formal-brief-readiness">等待项目</span></div>
+          <div class="workbench-empty" id="formal-brief-project-required">请先从项目列表进入项目，再处理该项目的 Brief 与资料。</div>
+          <div id="formal-brief-workbench" hidden>
+            <div class="ui00-brief-grid">
+              <details class="workbench-panel brief-source-panel" id="brief-source-panel" open>
+                <summary>需求对话</summary>
+                <div class="brief-intake-modes" role="group" aria-label="需求录入方式"><button type="button" class="text-button" data-brief-mode="conversation" aria-pressed="true">对话分析</button><button type="button" class="text-button" data-brief-mode="details" aria-pressed="false">详细录入</button></div>
+                <div id="brief-conversation" class="brief-conversation" aria-label="需求分析记录" aria-live="polite"><p class="brief-assistant-intro">告诉我这次想做什么，也可以上传已有需求文档。我会整理目标、风格和约束，把需要补充的问题一起列出来。</p></div>
+                <section id="workbench-brief-handoff" class="workbench-panel" aria-label="待核对的助手要求" hidden></section>
+                <form id="formal-brief-upload" class="brief-chat-composer">
+                  <div id="brief-reply-context" class="brief-reply-context" hidden></div>
+                  <div id="brief-answer-drafts" class="brief-answer-drafts" hidden></div>
+                  <fieldset id="brief-detail-fields" class="brief-detail-fields" hidden><legend>详细需求</legend><p>填写已确定的信息，未确定的可以留空，最后一次提交。</p></fieldset>
+                  <label class="ui00-brief-text" for="formal-brief-text"><span id="brief-composer-label">你的需求或补充</span><textarea id="formal-brief-text" name="text" rows="4" aria-describedby="formal-brief-text-count formal-brief-limits" placeholder="例如：做一支 60 秒年会开场片，高级国风，重点表现新品亮相和现场期待感。"></textarea><small id="formal-brief-text-count" aria-live="polite">0 字</small></label>
+                  <details class="brief-document-upload" id="brief-document-upload"><summary>上传需求文档与参考资料</summary><label class="ui00-brief-dropzone" id="formal-brief-dropzone" for="formal-brief-files"><strong>拖拽文件或点击选择</strong><span>PDF、Word、Excel、PPT、图片及文本</span><input id="formal-brief-files" name="files" type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.jpg,.jpeg,.png,.webp" /><small id="formal-brief-selection" aria-live="polite">尚未选择文件</small></label><button id="formal-brief-clear-files" class="text-button" type="button" hidden>清空所选文件</button></details>
+                  <p id="brief-intake-status" role="status"></p><div class="brief-intake-actions"><button class="primary-button" id="formal-brief-upload-button" type="submit">发送</button><button class="text-button" id="brief-analysis-retry" type="button" hidden>重新分析已存需求</button></div>
+                </form>
+                <details class="brief-source-evidence"><summary>资料与来源</summary><p class="field-note" id="formal-brief-limits" aria-live="polite">正在读取当前上传限制…</p><p class="field-note">原始资料保留，摘要中的内容可以查看来源、修改和核对。</p><div id="formal-brief-files-state" class="ui00-source-list" aria-live="polite"></div></details>
+              </details>
+              <section class="workbench-panel"><div class="panel-kicker"><span>需求摘要</span><b id="formal-fact-count">—</b></div><div id="formal-fact-list" class="ui00-fact-list"></div></section>
+              <section class="workbench-panel"><div class="panel-kicker"><span>待确认冲突</span><b id="formal-conflict-count">—</b></div><div id="formal-conflict-list" class="ui00-conflict-list"></div></section>
+            </div>
+            <section class="workbench-panel ui00-route-card" id="brief-template-panel" aria-labelledby="formal-brief-route-title">
+              <div class="panel-kicker"><span id="formal-brief-route-title">项目类型与模板</span><b id="formal-brief-route-state" aria-live="polite">等待资料</b></div>
+              <p id="formal-category-catalog" class="category-catalog" role="status">正在读取可选项目类型…</p><div class="template-current"><strong id="formal-template-current">正在读取模板…</strong><small>用于后续生成，已保存脚本保持不变。</small></div>
+              <details id="formal-template-picker" class="template-picker"><summary>选择模板</summary>
+                <div class="template-picker-body">
+                  <p>核对类型与模板，选择适合的表达调性，再确认需求。</p>
+                  <label for="formal-template-category"><span>模板类型</span><select id="formal-template-category" disabled></select></label>
+                  <button id="formal-template-category-confirm" type="button" class="secondary-button compact" hidden>修改需求类型并核对</button>
+                  <p id="formal-template-notice" role="status" aria-live="polite">正在读取可选模板…</p>
+                  <button id="formal-template-retry" type="button" class="secondary-button compact" hidden>重新读取模板</button>
+                  <label for="formal-template-select"><span>可选模板</span><select id="formal-template-select" disabled></select></label>
+                  <details class="template-import"><summary>导入新模板</summary><p>选择已同步 AI 规范表的 Excel，先核对结构。</p><label for="formal-template-file"><span class="visually-hidden">模板 Excel</span><input id="formal-template-file" type="file" accept=".xlsx" /></label><button id="formal-template-import" type="button" class="secondary-button compact" disabled>导入并核对</button></details>
+                  <section id="formal-template-preview" class="template-preview" aria-live="polite" hidden></section>
+                  <div class="template-trial-actions"><button id="formal-template-trial" type="button" class="secondary-button compact" disabled>试排结构</button><small id="formal-template-trial-hint">确认需求后可试排结构。</small></div>
+                  <section id="formal-template-trial-result" class="template-trial-result" aria-live="polite" hidden></section>
+                  <section id="formal-template-tones" class="brief-template-tones" aria-label="模板调性建议"></section>
+                  <div id="formal-template-binding" class="template-binding" hidden><p id="formal-template-binding-copy"></p><label class="agent-confirm"><input id="formal-template-confirm" type="checkbox" autocomplete="off" />我已核对，使用此模板</label><button id="formal-template-apply" class="primary-button compact" type="button" disabled>用于当前项目</button></div>
+                </div>
+              </details>
+              <div id="formal-brief-category-choice" hidden><label for="formal-project-category"><span>项目类型</span><select id="formal-project-category" name="category_id" disabled><option value="">正在读取类型…</option></select></label><small id="formal-category-status" role="status"></small><button class="secondary-button compact" id="formal-category-retry" type="button" hidden>重新读取类型</button><button class="secondary-button compact" id="formal-brief-category-apply" type="button">填入需求并核对</button></div>
+              <button class="text-button" id="formal-brief-category-edit" type="button">修改类型</button>
+              <details class="template-routing"><summary>类型识别依据</summary><p id="formal-brief-route-copy">读取项目类型后显示。</p><dl id="formal-brief-route-details"></dl></details>
+            </section>
+            <section class="workbench-panel ui00-standard-card" aria-labelledby="formal-standard-card-title"><div class="panel-kicker"><span id="formal-standard-card-title">项目创作标准卡</span><b id="formal-standard-card-state" aria-live="polite">等待资料</b></div><p id="formal-standard-card-copy" aria-live="polite">读取资料后会在这里显示项目创作标准。</p><div class="ui00-standard-grid" id="formal-standard-card-details"></div></section>
+            <section class="ui00-confirm-strip" id="brief-next-step"><div><span>下一步</span><strong id="formal-brief-gate-title">正在读取需求…</strong><p id="formal-brief-gate-copy">确认后才会开放下一步；暂不可继续时会说明需要处理的资料。</p></div><button class="primary-button" id="formal-brief-confirm" type="button" disabled>确认需求</button><a class="primary-button" id="brief-enter-creative" href="/projects" data-formal-target hidden>进入创作</a></section>
+          </div>
+        </section>
+
+        <section class="page creative-workspace" id="page-script" aria-labelledby="script-title">
+          <div class="section-head row creative-heading"><div><h1 id="script-title">创作工作台</h1></div><details class="creative-more"><summary>更多</summary><nav aria-label="创作辅助功能"><button type="button" class="text-button" data-creative-open-tool="assistant">智能修改</button><button type="button" class="text-button" data-creative-open-tool="records">依据与记录</button><a id="formal-script-version-governance" href="/projects">历史版本与管理</a><button class="secondary-button" id="formal-script-review-workbook" type="button" disabled>下载 XLSX 复核稿</button></nav></details></div>
+          <span class="agent-mode-stamp creative-script-state" id="formal-script-state" aria-live="polite">等待项目</span>
+          <div class="creative-tabs" role="tablist" aria-label="创作视图"><button id="creative-tab-structure" type="button" role="tab" data-creative-panel="structure" aria-controls="page-plan" aria-selected="false">结构</button><button id="creative-tab-script" type="button" role="tab" data-creative-panel="script" aria-controls="creative-script-panel" aria-selected="true">脚本</button><button id="creative-tab-images" type="button" role="tab" data-creative-panel="images" aria-controls="page-shot-images" aria-selected="false">配图</button></div>
+          <section id="creative-workspace-read-state" class="workbench-panel" role="status" hidden></section>
+          <section id="creative-first-draft" class="creative-first-draft" hidden aria-labelledby="creative-first-title">
+            <aside class="creative-first-brief">
+              <section class="creative-shot-outline creative-first-outline" aria-label="初稿段落目录"><div class="creative-outline-heading"><strong>段落</strong><small id="creative-first-block-count"></small></div><label class="creative-shot-search"><span class="sr-only">筛选段落</span><input id="creative-first-search" type="search" placeholder="查找段落内容"></label><ol id="creative-first-outline"></ol></section>
+              <details class="creative-first-tools"><summary>创作与修改</summary>
+              <span class="panel-kicker">创作操作</span><h2 id="creative-first-title">开始创作</h2>
+              <p id="creative-first-entry-copy">先与需求助手核对制作目标、风格和约束，再开始创作。</p>
+              <label class="workbench-generation-option"><input id="workbench-recommend-after-generation" type="checkbox" checked>生成后推荐配图</label><section id="creative-first-template" class="creative-input-notice" hidden></section>
+              <div id="creative-first-confirmed-entry"><a class="primary-button" id="creative-first-intake-link" href="/projects">分析与确认需求</a><button class="primary-button" id="creative-first-confirmed-start" type="button" hidden>按确认的需求创作</button></div>
+              <section id="creative-first-requirement-update" class="creative-input-notice" hidden><p>需求变更尚未应用到当前稿。</p><button type="button" class="secondary-button compact" data-first-answer-continue>预览对脚本的修改</button></section>
+              <details id="creative-first-assistant" hidden open><summary>继续改这份初稿</summary>
+                <form id="creative-first-revision-form"><label for="creative-first-revision-scope">允许修改</label>
+                  <select id="creative-first-revision-scope"><option value="current">当前段落</option><option value="selected">已选段落</option><option value="all">整份初稿</option></select>
+                  <p id="creative-first-revision-scope-copy" class="field-note" role="status"></p>
+                  <label for="creative-first-revision-input">修改要求</label><textarea id="creative-first-revision-input" rows="4" maxlength="4000" placeholder="例如：第二段声音更有层次，保留第一段。" required></textarea>
+                  <button class="secondary-button" id="creative-first-revision-submit" type="submit">预览修改</button>
+                </form>
+              </details>
+              </details>
+            </aside>
+            <div class="creative-first-paper">
+              <header><div><span class="panel-kicker">当前初稿</span><h2 id="creative-first-paper-title">脚本正文</h2></div><div class="creative-first-actions">
+                <button class="text-button" type="button" data-first-action="undo" disabled>撤销</button>
+                <button class="text-button" type="button" data-first-action="redo" disabled>恢复</button>
+                <button class="secondary-button compact" type="button" id="creative-first-save">保存进度</button>
+              </div></header>
+              <p id="creative-first-image-copy" class="field-note" hidden>按段落查看与调整参考图；选图后保存在当前初稿中。</p>
+              <p id="creative-first-status" role="status">正在读取初稿…</p>
+              <div class="creative-first-context"><p id="creative-first-summary" class="creative-first-summary" role="status"></p><button type="button" class="text-button" id="creative-first-align-duration" hidden>按目标调整时长</button></div>
+              <div class="creative-first-navigation"><div class="creative-edit-mode" role="group" aria-label="初稿编辑视图"><button type="button" class="text-button" data-first-view="overview" aria-pressed="true">卡片总览</button><button type="button" class="text-button" data-first-view="shot" aria-pressed="false">逐段编辑</button><button type="button" class="text-button" data-first-view="table" aria-pressed="false">完整表格</button></div><div class="ui00-inline-actions"><button type="button" class="text-button" data-first-step="-1">上一段</button><span id="creative-first-position"></span><button type="button" class="text-button" data-first-step="1">下一段</button></div><a class="secondary-button compact" id="creative-first-plan-link" href="/projects">查看结构与规划</a></div>
+              <p id="creative-first-assistant-status" class="field-note" role="status" hidden></p>
+              <div id="creative-first-conflict" class="creative-location-notice" hidden><span>此处输入已保留。读取最新内容后，可重新保存你的修改。</span><button class="secondary-button compact" type="button" id="creative-first-reload">读取最新内容</button></div>
+              <section id="creative-first-proposal" class="creative-first-proposal" hidden aria-live="polite"></section>
+              <section id="creative-first-image-flow" class="creative-image-flow" hidden aria-live="polite"></section><section id="creative-first-overview" class="workbench-overview" aria-label="初稿卡片总览"></section><div id="creative-first-blocks"></div>
+            </div>
+          </section>
+            <section class="ui00-script-toolbar" aria-label="脚本草稿状态">
+              <div><span>当前脚本</span><strong id="formal-script-project-name">—</strong><small id="formal-script-version-label">—</small></div>
+              <div class="ui00-script-save-state" id="formal-script-save-state" tabindex="-1" aria-live="polite">正在读取当前脚本…</div>
+
+              <div class="creative-progress-controls"><span id="creative-progress-status" role="status">修改后自动保存进度</span><button type="button" class="secondary-button compact" id="creative-save-progress">保存进度</button><button type="button" class="secondary-button compact" data-creative-open-tool="save" id="creative-open-save">保存新版本</button></div><div id="creative-progress-conflict" class="creative-location-notice" hidden><span data-progress-conflict-summary>当前输入已保留，请先读取另一处保存的进度。</span><button type="button" class="secondary-button compact" data-progress-conflict-read>读取最新进度</button><button type="button" class="secondary-button compact" data-progress-conflict-local hidden>保留此处选择并保存</button><button type="button" class="secondary-button compact" data-progress-conflict-server hidden>使用已保存进度</button></div><section id="formal-script-conflict" class="creative-location-notice" aria-live="polite" hidden></section><div class="ui00-script-history-actions"><button class="secondary-button compact" id="formal-script-undo" type="button" disabled>撤销文字</button><button class="secondary-button compact" id="formal-script-redo" type="button" disabled>恢复文字</button><button class="secondary-button compact" id="formal-script-retry" type="button" hidden>重试保存草稿</button><button class="secondary-button compact" id="formal-script-discard" type="button" disabled>放弃全部草稿修改</button></div>
+            </section>
+
+          <div class="creative-next-step" id="creative-next-step" aria-live="polite"><div><strong id="creative-next-label">正在读取当前稿</strong><p id="creative-next-copy"></p><a id="creative-saved-delivery" class="text-button" data-formal-target href="/projects" hidden></a></div><a class="primary-button compact" id="creative-next-action" href="/projects" hidden>继续</a></div>
+          <aside id="formal-script-basis-notice" class="creative-location-notice" hidden role="status"><span>已确认新的需求；当前稿沿用旧版依据。旧稿和输入仍保留。采用新需求前，可先核对并放弃全部草稿修改，再重新规划。</span><a class="secondary-button compact" data-formal-target href="/projects">按新需求重新规划</a></aside>
+          <section id="script-task-context" class="creative-location-notice" hidden aria-live="polite"></section>
+          <div id="creative-location-notice" class="creative-location-notice" hidden role="status"></div>
+          <div class="creative-layout">
+            <aside id="creative-shot-outline" class="creative-shot-outline" aria-label="当前稿镜头"><div class="creative-outline-heading"><strong>镜头</strong><small id="creative-shot-count">0 镜</small><button type="button" class="text-button" data-creative-batch-toggle aria-pressed="false">批量选择</button></div><p id="creative-image-summary" aria-live="polite"></p><label class="creative-shot-search"><span class="sr-only">筛选镜头</span><input id="creative-shot-search" type="search" placeholder="筛选镜头" /></label><div class="creative-outline-selection"><span id="creative-shot-selection-count">已选 0 镜</span><button type="button" class="text-button" data-creative-select-visible>选择筛选结果</button><button type="button" class="text-button" data-creative-clear-selection>清空</button><button type="button" class="text-button" data-creative-batch-images data-image-batch-mode="fill_missing">补齐缺图</button><button type="button" class="text-button" data-creative-batch-images data-image-batch-mode="replace_selected">重新推荐所选</button></div><ol id="creative-shot-list"></ol></aside>
+            <div class="creative-stage" id="creative-stage">
+              <section id="creative-script-panel" class="creative-panel" role="tabpanel" aria-labelledby="creative-tab-script">
+          <div id="formal-script-project-required" class="ui00-business-empty" aria-live="polite"><strong>请先进入一个项目</strong><p>从项目列表选择项目，并完成规划与脚本生成后再编辑。</p></div>
+          <div id="formal-script-workbench" hidden>
+
+
+
+            <details class="creative-protection" id="creative-protection-details"><summary>镜头保护</summary><section class="ui00-script-protection" id="formal-script-protection" aria-labelledby="formal-script-protection-title">
+              <div><h2 id="formal-script-protection-title">锁定镜头</h2><p>助手修改保留受保护镜头；表格仍可手动编辑。</p></div>
+              <div class="ui00-script-protection-actions"><strong id="formal-script-lock-summary" aria-live="polite">尚未锁定镜头</strong><button class="secondary-button compact" id="formal-script-lock-edit" type="button">选择镜头</button><button class="secondary-button compact" id="formal-script-lock-clear" type="button" hidden>全部解除</button><button class="primary-button compact" id="formal-script-lock-save" type="button" hidden>保存锁定</button><button class="secondary-button compact" id="formal-script-lock-cancel" type="button" hidden>取消</button></div>
+            </section></details>
+
+            <section class="ui00-script-table-panel" aria-labelledby="formal-script-table-title">
+              <div class="panel-kicker"><span>当前脚本</span><b id="formal-script-revision">已保存版本</b></div>
+              <div class="ui00-script-panel-head"><div><h2 id="formal-script-table-title">当前镜头</h2><p>修改自动保存到当前稿；核对后再保存新版本。</p></div><div class="creative-edit-mode" role="group" aria-label="编辑视图"><button type="button" class="text-button" data-creative-edit-mode="overview" aria-pressed="true">卡片总览</button><button type="button" class="text-button" data-creative-edit-mode="shot" aria-pressed="false">逐镜编辑</button><button type="button" class="text-button" data-creative-edit-mode="table" aria-pressed="false">完整表格</button></div></div><section id="creative-script-overview" class="workbench-overview" aria-label="脚本卡片总览"></section><div class="creative-edit-surface"><div class="ui00-script-table-scroll" id="formal-script-table" aria-live="polite"></div><aside id="creative-current-image" class="creative-current-image" aria-label="当前镜头配图" aria-live="polite"></aside></div>
+            </section>
+
+            <section class="ui00-script-pending" id="formal-script-pending" hidden aria-live="polite"></section>
+            <div class="ui00-script-lower-grid">
+              <details class="creative-tool-panel" id="creative-assistant"><summary>智能修改</summary><form class="ui00-script-instruction" id="formal-script-instruction-form">
+                <h2>修改要求</h2><label class="creative-assistant-scope"><span>本次允许修改</span><select id="creative-assistant-scope"><option value="current">当前镜头</option><option value="selected">已选镜头</option><option value="all">整份当前稿</option></select></label><p id="creative-assistant-scope-copy" class="creative-scope-copy" aria-live="polite"></p>
+                <details class="creative-quick-feedback"><summary>修改建议</summary><fieldset class="ui00-script-quick-feedback" id="formal-script-quick-feedback"><legend>快捷意见</legend><button class="secondary-button compact" type="button" data-script-quick-feedback="减少航拍镜头" data-feedback-kind="structure">减少航拍</button><button class="secondary-button compact" type="button" data-script-quick-feedback="增加特写镜头" data-feedback-kind="structure">增加特写</button><button class="secondary-button compact" type="button" data-script-quick-feedback="旁白更自然" data-feedback-kind="copy">旁白更自然</button><button class="secondary-button compact" type="button" data-script-quick-feedback="字幕更简洁" data-feedback-kind="copy">字幕更简洁</button><button class="secondary-button compact" type="button" data-script-quick-feedback="减少重复内容" data-feedback-kind="copy">减少重复</button><button class="secondary-button compact" type="button" data-script-quick-feedback="减少常用套话和AI味" data-feedback-kind="copy">减少套话</button><button class="secondary-button compact" type="button" data-script-quick-feedback="节奏更紧凑" data-feedback-kind="copy">节奏更紧凑</button></fieldset></details>
+                <label for="creative-assistant-kind">修改内容</label><select id="creative-assistant-kind"><option value="text">脚本文字</option><option value="images">图片选择</option></select>
+                <label for="formal-script-instruction">修改要求</label>
+                <textarea id="formal-script-instruction" name="instruction" rows="3" maxlength="4000" autocomplete="off" placeholder="例如：把第 2 镜声音修改为现场掌声后衔接克制的节奏音乐" required></textarea>
+                <p>选择快捷意见或输入要求，先看差异再应用。</p>
+                <section class="ui00-script-scope" id="formal-script-scope" hidden aria-labelledby="formal-script-scope-title"><strong id="formal-script-scope-title">勾选本次修改范围</strong><p id="formal-script-scope-copy"></p><div id="formal-script-scope-options"></div><button class="secondary-button compact" id="formal-script-scope-continue" type="button">预览所选修改</button></section>
+                <div id="formal-script-revision-proposal" class="ui00-image-version-message" hidden aria-live="polite"></div>
+                <button class="primary-button" id="formal-script-instruction-submit" type="submit">预览修改</button>
+              </form></details>
+
+              <details class="creative-tool-panel" id="creative-save"><summary>保存新版本</summary><form class="ui00-script-version-save" id="formal-script-save-form">
+                <h2>核对本次变化</h2>
+                <label for="formal-script-save-reason">本次修改说明</label>
+                <textarea id="formal-script-save-reason" name="reason" rows="2" maxlength="500" autocomplete="off" placeholder="说明本次修改的目标与范围" required></textarea>
+                <p>核对变化和说明后，保存为新版本。</p>
+                <div id="formal-script-save-proposal" class="ui00-image-version-message" hidden aria-live="polite"></div>
+                <button class="primary-button" id="formal-script-save" type="submit" disabled>保存为新版本</button>
+
+              </form></details>
+            </div>
+
+            <details class="ui00-script-versions"><summary id="formal-script-versions-title">版本记录</summary>
+              <div id="formal-script-versions" class="ui00-script-version-list"><div class="workbench-empty">尚无正式版本。</div></div>
+              <div id="formal-script-diff" class="ui00-script-diff" aria-live="polite">
+                <div class="workbench-empty">保存新版本后，可在这里核对改前、改后和未变化范围。</div>
+              </div>
+            </details>
+          </div>
+              </section>
+              <section id="page-plan" class="creative-panel" role="tabpanel" aria-labelledby="creative-tab-structure" hidden>
+          <div class="section-head row"><div><h2 id="plan-title">规划与生成</h2><p>先查看事件和镜头安排，确认后生成脚本版本。</p></div><a class="secondary-button compact" id="formal-plan-back-brief" href="/projects" data-route="brief">返回 Brief</a></div>
+          <section id="workbench-plan-handoff" class="workbench-panel" aria-label="待核对的规划要求" hidden></section>
+          <div id="formal-plan-project-required" class="ui00-business-empty" aria-live="polite"><strong>请先进入一个项目</strong><p>从项目列表选择项目后，再查看该项目的规划准备情况。</p></div>
+          <div id="formal-plan-workbench" hidden>
+            <p class="template-plan-binding"><span>项目模板</span><strong id="formal-plan-template">正在读取…</strong><a id="formal-plan-template-link" href="/projects" data-route="brief" data-formal-target="1">查看模板</a></p>
+            <section class="ui00-plan-status" aria-live="polite"><span>规划状态</span><strong id="formal-plan-state">正在核对项目准备情况…</strong><p id="formal-plan-status-copy">请稍候。</p></section>
+            <section class="ui00-plan-preview" id="creative-current-structure" aria-label="当前结构" hidden></section>
+            <section class="ui00-business-empty ui00-plan-block" id="formal-plan-brief-block" hidden><strong>请先完成并确认 Brief</strong><p>确认后才能继续准备项目规划。</p><a class="secondary-button compact" href="/projects" data-route="brief">前往 Brief</a></section>
+            <section class="ui00-business-empty ui00-plan-block" id="formal-plan-standard-block" hidden><strong id="formal-plan-standard-block-title">请先完成并确认项目创作标准卡</strong><p id="formal-plan-standard-block-copy">创作标准卡需要与当前已确认的 Brief 保持同一版本。完成确认后，再生成规划。</p><div class="ui00-inline-actions"><a class="secondary-button compact" href="/projects" data-route="overview">返回项目概览</a><a class="secondary-button compact" href="/projects" data-route="brief">查看 Brief</a></div></section>
+            <section class="ui00-business-empty ui00-plan-block" id="formal-plan-image-block" hidden><strong id="formal-plan-image-block-title">请先完成项目图片理解</strong><p id="formal-plan-image-block-copy">项目图片尚未全部可用于规划。</p><div class="ui00-inline-actions"><a class="primary-button compact" href="/projects" data-route="materials">前往项目素材</a><a class="secondary-button compact" href="/projects" data-route="brief">查看 Brief</a></div></section>
+            <section class="ui00-plan-action" id="formal-plan-action" hidden><div><span class="eyebrow">准备就绪</span><h2>生成规划</h2><p>先生成可核对的事件与镜头规划；不会创建脚本版本，直到你确认。</p></div><button class="primary-button" id="formal-plan-create" type="button">生成规划</button></section>
+            <section class="ui00-plan-preview" id="formal-plan-preview" hidden aria-labelledby="formal-plan-preview-title">
+              <div class="panel-kicker"><span>规划预览</span><b id="formal-plan-summary">—</b></div>
+              <h2 id="formal-plan-preview-title">本次怎么编排</h2>
+              <button class="secondary-button compact" type="button" id="formal-plan-regenerate">重新生成规划</button>
+              <section id="formal-plan-template-summary" class="ui00-plan-template-summary"></section>
+              <details class="ui00-plan-event-details"><summary>查看 Brief 事件</summary><ol class="ui00-plan-events" id="formal-plan-events"></ol></details>
+              <details class="ui00-plan-event-details" id="formal-plan-capacity-details"><summary>查看容量与核对</summary><div class="ui00-plan-capacity" id="formal-plan-capacity"></div><div class="ui00-plan-decision-counts" id="formal-plan-decision-counts" aria-label="规划质量计数"></div></details>
+              <div class="ui00-plan-conflicts" id="formal-plan-conflicts" hidden><div class="ui00-plan-section-head"><div><span class="eyebrow">结构冲突</span><h3>请确认项目实际采用的内容</h3></div><button class="primary-button compact" id="formal-plan-conflict-prepare" type="button">检查影响</button></div><div id="formal-plan-conflict-list"></div><section class="ui00-plan-conflict-confirmation" id="formal-plan-conflict-confirmation" hidden tabindex="-1"><div><strong>确认重新规划</strong><p id="formal-plan-conflict-confirm-copy">此操作不调用模型。</p></div><dl><div><dt>会改变</dt><dd id="formal-plan-conflict-will-change">—</dd></div><div><dt>不会改变</dt><dd id="formal-plan-conflict-will-not-change">—</dd></div><div><dt>模型调用</dt><dd>0 次</dd></div><div><dt>影响范围</dt><dd>当前项目规划</dd></div></dl><label class="agent-confirm" for="formal-plan-conflict-check"><input id="formal-plan-conflict-check" type="checkbox" autocomplete="off" />我已核对全部冲突选择</label><div class="ui00-inline-actions"><button class="primary-button compact" id="formal-plan-conflict-execute" type="button" disabled>确认并重新规划</button><button class="secondary-button compact" id="formal-plan-conflict-cancel" type="button">取消</button></div></section></div>
+              <div class="ui00-plan-coverage" id="formal-plan-coverage" tabindex="-1"></div>
+              <details class="ui00-plan-event-details" id="formal-plan-shots-details"><summary id="formal-plan-shots-summary">查看镜头安排</summary><div class="ui00-plan-shots" id="formal-plan-shots" tabindex="-1"></div></details>
+              <div class="ui00-plan-audit" id="formal-plan-audit" aria-live="polite"></div>
+            </section>
+            <section class="ui00-plan-confirmation" id="formal-plan-confirmation" hidden aria-labelledby="formal-plan-confirm-title" tabindex="-1">
+              <div><span class="eyebrow">确认后执行</span><h2 id="formal-plan-confirm-title">确认创建脚本版本</h2><p>确认后生成可编辑脚本。</p></div>
+              <details class="ui00-plan-event-details"><summary>查看生成影响</summary><dl>
+                <div><dt>会改变</dt><dd>创建当前规划对应的脚本版本</dd></div>
+                <div><dt>不会改变</dt><dd>Brief、已锁定内容与正式发布</dd></div>
+                <div><dt>影响范围</dt><dd>当前项目／当前规划</dd></div>
+              </dl></details>
+              <label class="agent-confirm" for="formal-plan-confirm-check"><input id="formal-plan-confirm-check" name="plan_confirmed" type="checkbox" autocomplete="off" />我已核对规划并确认创建脚本版本</label>
+              <label class="workbench-generation-option"><input id="workbench-recommend-after-formal-generation" type="checkbox" checked>生成后推荐配图</label><button class="primary-button" id="formal-plan-confirm" type="button" disabled>确认并创建脚本版本</button>
+            </section>
+            <section class="ui00-plan-result" id="formal-plan-result" hidden aria-live="polite"><div><span class="eyebrow">已完成</span><h2>脚本版本已创建</h2><p>已生成可继续编辑的脚本预览。</p></div><div class="ui00-script-preview" id="formal-plan-script-rows"></div><a class="primary-button compact" id="formal-plan-to-script" href="/projects" data-route="script">进入脚本与版本</a></section>
+          </div>
+              </section>
+              <section id="page-shot-images" class="creative-panel" role="tabpanel" aria-labelledby="creative-tab-images" hidden>
+          <div class="section-head row"><div><h2 id="shot-images-title">镜头配图</h2><p>先出建议，逐镜调整后应用所选；核对图片后保存配图版本。</p></div><span class="agent-mode-stamp" id="formal-shot-image-state" aria-live="polite">等待脚本</span></div>
+          <div class="ui00-business-empty" id="formal-shot-image-project-required" aria-live="polite"><strong>请先进入一个项目</strong><p>完成脚本版本后，再为每个镜头选择图片。</p></div>
+          <section id="creative-image-flow" class="creative-image-flow" aria-label="本轮配图与缺口" hidden></section><div class="creative-image-draft-gate" id="creative-image-draft-gate" hidden role="status"><strong>当前文字仍是草稿</strong><p>可以浏览、暂选图片并保存进度。推荐依据当前已保存工作稿。选图、生成与核对可继续，正式交付前再保存版本。</p><button type="button" class="primary-button compact" data-creative-save-before-images>查看变化并保存</button></div><div id="formal-shot-image-workbench" hidden>
+            <section class="ui00-image-version-workspace" aria-labelledby="formal-image-version-title">
+              <div class="panel-kicker"><span>逐镜决定</span><b>逐镜确认 · 可复用</b></div>
+              <div class="ui00-image-version-head">
+                <div><h2 id="formal-image-version-title">确认镜头配图</h2><p>核对画面与来源。需要复用时，说明理由。</p></div>
+                <span id="formal-image-version-state" aria-live="polite">等待脚本</span>
+              </div>
+              <div class="ui00-image-version-message" id="formal-image-version-message" aria-live="polite">请先完成脚本生成。</div>
+              <form id="formal-image-version-form" hidden>
+                <input id="formal-image-supplement-file" type="file" accept=".jpg,.jpeg,.png,.webp" hidden />
+                <div class="creative-image-scope"><label><span>查看镜头</span><select id="creative-image-scope"><option value="current">当前镜头</option><option value="selected">批量选中的镜头</option><option value="all">全部镜头</option></select></label><strong id="creative-image-scope-copy" aria-live="polite"></strong><button class="secondary-button compact" type="button" data-creative-open-library>打开图库</button><button class="primary-button compact" type="button" data-creative-match-images data-image-batch-mode="fill_missing">补齐缺图</button><button class="secondary-button compact" type="button" data-creative-match-images data-image-batch-mode="replace_selected">重新推荐所选</button></div><div class="ui00-image-progress-bar"><strong id="formal-image-progress" aria-live="polite">正在读取镜头</strong><div><label for="formal-image-jump">跳到</label><select id="formal-image-jump" aria-label="跳到镜头"></select><button class="secondary-button compact" id="formal-image-next-incomplete" type="button">下一项待确认选择</button><button class="secondary-button compact" id="formal-image-next-gap" type="button">下一个未配图镜头</button></div></div>
+                <div id="workbench-image-heading" class="workbench-image-heading"><strong>镜头配图</strong><button type="button" class="secondary-button compact" data-workbench-image-overview hidden>返回卡片总览</button></div><section id="creative-image-overview" class="workbench-overview" aria-label="配图卡片总览"></section><div class="ui00-image-shot-grid" id="formal-image-shot-grid"></div>
+                <div class="ui00-image-version-actions">
+                  <p id="formal-image-selection-status" aria-live="polite">请逐镜检查并确认。</p>
+                  <div class="ui00-inline-actions"><button class="secondary-button compact" type="button" data-preview-image-confirmation="selected">确认所选配图</button><button class="secondary-button compact" type="button" data-preview-image-confirmation="all">确认全部配图</button></div><div id="creative-image-confirmation" tabindex="-1" hidden></div><button class="primary-button" id="formal-image-version-save" type="submit" disabled>保存新版本</button>
+                </div>
+                <section class="ui00-image-version-proposal" id="formal-image-version-proposal" hidden tabindex="-1" aria-live="polite"></section>
+              </form>
+              <details class="creative-image-history"><summary>配图版本记录</summary><div class="ui00-image-version-history" id="formal-image-version-history"></div></details>
+            </section>
+          </div>
+              </section>
+
+            </div>
+          </div>
+        </section>
+
+              <section id="page-materials" class="page creative-materials" aria-labelledby="materials-title" hidden><button class="secondary-button compact creative-return" type="button" data-creative-close-materials>返回原镜头</button><p id="creative-materials-context" class="creative-scope-copy" aria-live="polite"></p>
+          <div class="section-head row"><div><h2 id="materials-title">图库与素材</h2><p>上传、分析图片，再为镜头选图。</p></div><span class="agent-mode-stamp" id="formal-image-state" aria-live="polite">等待项目</span></div>
+          <div class="ui00-business-empty" id="formal-image-project-required" aria-live="polite"><strong>请先进入一个项目</strong><p>从项目列表选择项目后，再查看该项目的图片。</p></div>
+          <div id="formal-image-workbench" hidden>
+            <section class="ui00-material-upload" aria-labelledby="formal-image-upload-title">
+              <div><h2 id="formal-image-upload-title">补充项目图片</h2><p>可一次上传多张 JPG、PNG 或 WebP。</p></div>
+              <form id="formal-image-upload-form"><label for="formal-image-upload-files"><span>选择图片</span><input id="formal-image-upload-files" name="files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" /></label><small id="formal-image-upload-selection" aria-live="polite">尚未选择图片</small><button class="secondary-button compact" id="formal-image-upload-button" type="submit">上传图片</button></form>
+              <div id="formal-image-upload-state" aria-live="polite"></div>
+            </section>
+            <section class="ui00-image-summary" aria-label="图片理解状态">
+              <div><span>项目图片</span><strong id="formal-image-total">—</strong></div>
+              <div><span>可用</span><strong id="formal-image-passed">—</strong></div>
+              <div><span>待处理</span><strong id="formal-image-pending">—</strong></div>
+              <div><span>需要关注</span><strong id="formal-image-attention">—</strong></div>
+            </section>
+            <section class="ui00-image-gate" id="formal-image-gate" aria-live="polite">
+              <div><span>规划前检查</span><strong id="formal-image-gate-title">正在读取图片…</strong><p id="formal-image-gate-copy">请稍候。</p></div>
+              <div class="ui00-inline-actions"><button class="secondary-button compact" id="formal-image-synchronize" type="button" hidden>接入已确认资料中的图片</button><button class="secondary-button compact" id="formal-image-understand" type="button" disabled>分析图片</button><a class="secondary-button compact" href="/projects" data-route="brief">补充项目资料</a><a class="primary-button compact" id="formal-image-to-plan" href="/projects" data-route="plan" aria-disabled="true">进入规划与生成</a></div>
+            </section>
+            <div class="creative-analysis-batch" id="creative-analysis-batch" hidden><strong id="creative-analysis-count" aria-live="polite">已选 0 张</strong><button class="secondary-button compact" type="button" data-analysis-select-visible>选择有分析结果的图片</button><button class="primary-button compact" id="creative-analysis-confirm" type="button" disabled>确认所选分析</button><button class="text-button" type="button" data-analysis-clear>取消选择</button><p id="creative-analysis-result" aria-live="polite"></p></div><div class="ui00-image-grid" id="formal-image-grid" aria-live="polite"></div>
+          </div>
+              </section>
+
+        <section class="page" id="page-review" aria-labelledby="review-title">
+          <div class="section-head row"><div><h1 id="review-title">审核与交付</h1><p>逐镜处理问题，最后确认整片并下载交付稿。</p></div><span id="formal-review-state" class="ui00-image-status" aria-live="polite" tabindex="-1">等待版本</span></div>
+          <div class="ui00-business-empty" id="formal-review-project-required"><strong>请先进入项目</strong><p>完成脚本和逐镜图片确认后，项目经理可在这里审核。</p></div>
+          <div class="ui00-review-workbench" id="formal-review-workbench" hidden>
+            <section class="ui00-review-decision" aria-labelledby="formal-review-decision-title">
+              <div><span class="eyebrow">当前版本</span><h2 id="formal-review-decision-title">当前版本待审核</h2><p id="formal-review-decision-copy">正在读取审核状态…</p></div>
+              <dl class="ui00-review-counts"><div><dt>待处理</dt><dd id="formal-review-problem-count">0</dd></div><div><dt>重点</dt><dd id="formal-review-serious-count">0</dd></div><div><dt>提醒</dt><dd id="formal-review-attention-count">0</dd></div><div><dt>已通过</dt><dd id="formal-review-approved-count">0</dd></div></dl>
+              <div id="review-prerequisites" class="review-prerequisites" hidden aria-live="polite"></div><div id="creative-review-draft" class="creative-review-draft" hidden></div><div id="formal-review-revision-proposal" class="ui00-business-empty" hidden></div>
+              <button class="primary-button" id="formal-review-start" type="button">开始审核</button>
+            </section>
+            <section class="ui00-review-problems" aria-labelledby="formal-review-problems-title">
+              <div class="ui00-review-section-head"><div><span class="eyebrow">优先检查</span><h2 id="formal-review-problems-title">问题与变化镜头</h2></div></div>
+              <div class="ui00-review-batch" id="formal-review-batch" hidden><strong id="formal-review-batch-count" aria-live="polite">已选 0 项</strong><button class="secondary-button compact" type="button" data-review-select-current>选择当前组</button><button class="primary-button compact" id="formal-review-batch-approve" type="button" disabled>批量通过</button><button class="secondary-button compact" type="button" data-review-clear-selection="1">取消选择</button><details class="creative-review-return"><summary>退回所选</summary><label for="creative-review-return-note"><span>共同退回原因</span><textarea id="creative-review-return-note" rows="2" maxlength="4000" placeholder="说明需要修改的问题，所选项目共用此原因"></textarea></label><button class="secondary-button compact" type="button" id="creative-review-batch-return">退回所选项目</button></details></div><div id="formal-review-issues" class="ui00-review-issue-list" aria-live="polite"></div>
+            </section>
+            <details class="ui00-plan-coverage ui00-review-trace"><summary id="formal-review-trace-title">需求核对记录</summary><div class="ui00-plan-decision-counts" id="formal-review-decision-counts" aria-label="审核质量计数"></div><div id="formal-review-traceability"></div></details>
+            <details class="ui00-review-evidence"><summary>查看审核记录</summary><div id="formal-review-evidence"></div></details>
+            <section class="ui00-review-final" aria-labelledby="formal-review-final-title">
+              <div><span class="eyebrow">整片最终确认</span><h2 id="formal-review-final-title">确认当前完整版本</h2><p id="formal-review-final-copy">处理全部问题后才能确认；机器通过不能替代本操作。</p></div>
+              <form id="formal-review-final-form">
+                <p>确认整片内容与配图无误后，即可下载交付稿。</p>
+                <details><summary>补充意见（可选）</summary><label for="formal-review-final-note" class="sr-only">整片补充意见</label><textarea id="formal-review-final-note" name="final_review_note" rows="2" maxlength="4000" autocomplete="off"></textarea></details>
+                <button class="primary-button" id="formal-review-final-submit" type="submit" disabled>完成整片确认</button>
+              </form>
+              <p id="formal-review-next-action" aria-live="polite">等待审核项处理。</p>
+            </section>
+            <section class="ui00-review-delivery" id="formal-delivery-card" aria-labelledby="formal-delivery-title" hidden>
+              <div><span class="eyebrow">交付文件</span><h2 id="formal-delivery-title">项目交付文件</h2><strong id="delivery-current-version">正在读取版本…</strong><p>Excel 包含完整脚本、逐镜清晰图片和资料来源，可脱离 Loomtake 独立打开。正式 Excel 用于交付，可选 PDF 用于阅读；XLSX 复核稿用于人工修改意见。</p></div>
+              <div><div class="ui00-inline-actions"><button class="primary-button" id="formal-delivery-excel" type="button" disabled>导出 Excel</button><button class="secondary-button" id="formal-delivery-pdf" type="button" disabled>导出 PDF（可选）</button></div><p id="formal-delivery-status" aria-live="polite" tabindex="-1">完成整片确认后开放。</p></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="page" id="page-tasks" aria-labelledby="tasks-title">
+          <div class="section-head row"><div><h1 id="tasks-title">任务</h1><p>查看任务进度，继续需要处理的工作。</p></div><span id="formal-task-count" class="ui00-image-status" aria-live="polite">读取中</span></div>
+          <div class="ui00-task-tabs" role="tablist" aria-label="任务记录类型"><a class="secondary-button compact" href="/tasks" data-task-view="tasks" role="tab">业务任务</a></div>
+          <form class="ui00-task-filters" id="formal-task-filters"><label><span>搜索项目或用途</span><input id="formal-task-query" name="query" maxlength="200" placeholder="搜索任务" /></label><label><span>项目</span><select id="formal-task-project-filter"><option value="">全部项目</option></select></label><label><span>状态</span><select id="formal-task-status-filter"><option value="">全部状态</option><option value="received">已接收</option><option value="understanding">读取中</option><option value="needs_clarification">需要补充信息</option><option value="proposed">待核对</option><option value="waiting_confirmation">待确认</option><option value="partially_completed">部分完成</option><option value="executing">处理中</option><option value="waiting_user">等待确认</option><option value="waiting_human_review">等待人工复核</option><option value="completed">已完成</option><option value="blocked">暂时无法继续</option><option value="failed">失败</option><option value="cancelled">已取消</option></select></label><label><span>创建日期从</span><input id="formal-task-from" name="created_from" type="date" /></label><label><span>至</span><input id="formal-task-to" name="created_to" type="date" /></label><button class="secondary-button compact" type="submit">应用筛选</button><button class="text-button" type="button" data-task-refresh>刷新结果</button></form>
+          <div class="ui00-business-empty" id="formal-task-project-required" hidden><strong>请先进入工作区</strong><p>请先返回项目列表进入本机工作区。</p></div>
+          <p id="formal-task-scope" class="field-note"></p><div class="ui00-task-list" id="formal-task-list" aria-live="polite"></div><nav id="formal-task-pages" class="list-pagination" aria-label="任务分页"></nav>
+        </section>
+
+        <section class="page" id="page-tools" aria-labelledby="tools-title">
+          <div class="section-head row"><div><h1 id="tools-title">工具与资源</h1><p>按需要进入项目助手、资产库、创作策略与规则或系统状态。</p></div></div>
+          <div class="ui00-dashboard ui00-tools-grid">
+            <section class="ui00-panel"><h2>资源</h2><p>浏览已登记素材，或导入新的项目资料。</p><div class="ui00-inline-actions"><a class="primary-button compact" href="/assets" data-tool-link="assets">资产库</a><a class="secondary-button compact" href="/projects" data-tool-link="templates">项目模板</a></div></section>
+            <section class="ui00-panel"><h2>项目规则</h2><p>核对当前创作策略、生效规则和待审建议。</p><div class="ui00-inline-actions"><a class="secondary-button compact" href="/knowledge" data-tool-link="knowledge">创作策略与规则</a><a class="text-button" href="/assistant" data-tool-link="assistant">项目助手</a></div></section>
+            <section class="ui00-panel"><h2>运行记录</h2><p>查看历史运行和当前服务验证记录。</p><div class="ui00-inline-actions"><a class="secondary-button compact" href="/tasks?view=runs" data-task-view="runs">历史运行</a><a class="secondary-button compact" href="/system" data-route="system">系统状态</a></div></section>
+            <section class="ui00-panel"><h2>使用帮助</h2><details><summary>从想法开始</summary><p>先与需求助手分析想法，确认后开始创作。</p><a href="/projects" class="text-button" data-help-route="brief">分析需求</a></details><details><summary>从资料到交付</summary><p>确认需求和模板，编辑脚本并配图，再完成审核与整片确认。</p><div class="ui00-inline-actions"><a href="/projects" class="text-button" data-help-route="brief">整理需求</a><a href="/projects" class="text-button" data-help-route="review">审核与交付</a></div><p>复核稿用于查看已保存脚本；正式交付需完成当前版本的审核。</p></details></section>
+          </div>
+        </section>
+
+        <section class="page" id="page-agent" aria-labelledby="agent-title">
+          <div class="section-head row agent-head">
+            <div><h1 id="agent-title">项目助手</h1><p>描述你要做的事，核对结果后确认修改。</p></div>
+            <span class="agent-mode-stamp">需确认</span>
+          </div>
+          <div class="agent-desk" id="agent-desk">
+            <div class="agent-toolbar"><label><span>当前项目</span><select id="agent-project-select" aria-label="选择项目"></select></label><div class="agent-toolbar-actions"><span id="agent-session-status" class="agent-session-status" aria-live="polite">正在准备会话…</span><button class="secondary-button compact" id="agent-refresh" type="button">刷新状态</button></div></div>
+            <div class="agent-layout" id="agent-layout">
+              <aside class="agent-state-rail" aria-label="项目状态">
+                <article class="agent-stat-card lime-edge"><span>项目</span><strong id="agent-project-name">—</strong><small id="agent-project-meta">—</small></article>
+                <article class="agent-stat-card"><span>版本</span><strong id="agent-version-state">—</strong><small id="agent-version-meta">—</small></article>
+                <article class="agent-stat-card"><span>审核</span><strong id="agent-review-state">—</strong><small id="agent-review-meta">—</small></article>
+                <article class="agent-blocker-card" id="agent-blocker-card"><span>当前情况 / 下一步</span><strong id="agent-blocker-title">读取中</strong><p id="agent-blocker-detail">正在核对项目状态…</p><small id="agent-next-step">—</small></article>
+              </aside>
+              <section class="agent-conversation" aria-live="polite"><div class="agent-feed" id="agent-feed"><article class="agent-message system"><h3>正在读取项目</h3><p>项目指令和确认记录会保存在当前会话中。</p></article></div><form class="agent-composer" id="agent-message-form"><label for="agent-message"><span>给项目助手的指令</span><textarea id="agent-message" rows="3" maxlength="4000" autocomplete="off" placeholder="例如：把第 2 镜声音修改为现场掌声"></textarea></label><div class="agent-composer-foot"><small id="agent-message-hint">修改会先展示预览。</small><button class="primary-button" id="agent-message-submit" type="submit" disabled>提交指令</button></div></form></section>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-versions" aria-labelledby="versions-title">
+          <div class="section-head row workbench-head">
+            <div>
+              <span class="eyebrow">已保存版本</span>
+              <h1 id="versions-title">版本工作台</h1>
+              <p>查看已保存版本、逐镜差异和发布状态。历史版本只读，不会覆盖当前版本。</p>
+            </div>
+            <div class="ui00-inline-actions"><a class="secondary-button compact" href="/projects" data-route="script">返回脚本编辑</a><span class="agent-mode-stamp">历史版本只读</span></div>
+          </div>
+
+          <div class="workbench-identity" id="version-identity-note">请先进入一个项目。</div>
+          <div class="workbench-desk" id="version-desk" hidden>
+            <div class="workbench-toolbar">
+              <label><span>当前项目</span><select id="version-project-select"></select></label>
+              <button class="secondary-button compact" id="version-refresh" type="button">刷新版本</button>
+            </div>
+            <div class="version-grid">
+              <section class="workbench-panel version-tree-panel">
+                <div class="panel-kicker"><span>版本记录</span><b id="version-count">0 个版本</b></div>
+                <div class="version-tree" id="version-tree"><div class="workbench-empty">尚无可比较版本</div></div>
+              </section>
+              <section class="workbench-panel diff-panel">
+                <div class="panel-kicker"><span>版本差异</span><b>按已保存内容计算</b></div>
+                <div class="diff-controls">
+                  <label><span>对比基准</span><select id="version-left"></select></label>
+                  <span class="diff-arrow">→</span>
+                  <label><span>修改版本</span><select id="version-right"></select></label>
+                  <button class="primary-button compact" id="version-compare" type="button">对比版本</button>
+                </div>
+                <div class="diff-result" id="version-diff"><div class="workbench-empty">选择两个版本后查看逐镜与字段差异。</div></div>
+              </section>
+            </div>
+            <section class="workbench-panel" aria-labelledby="version-preview-title">
+              <div class="panel-kicker"><span id="version-preview-title">只读版本内容</span><b>不会修改当前版本</b></div>
+              <div id="version-preview"><div class="workbench-empty">从版本记录选择一个版本查看。</div></div>
+            </section>
+            <section class="workbench-panel version-governance-panel">
+              <div class="panel-kicker"><span>发布流程</span><b>三步人工确认</b></div>
+              <div class="version-governance-head">
+                <div><h2>审核、候选、发布</h2><p>三个动作相互独立。只有发布完成后，当前交付版本才会更新。</p></div>
+                <label><span>治理目标版本</span><select id="version-governance-select"></select></label>
+              </div>
+              <div class="version-lifecycle" id="version-lifecycle"><div class="workbench-empty">选择版本后查看人工审核、候选和发布状态。</div></div>
+              <div class="version-projection-note" id="version-projection-note">请先完成人工审核，再设为候选并发布。</div>
+            </section>
+
+            <section class="asset-confirmation version-confirmation" id="version-confirmation" hidden>
+              <div><span id="version-confirm-risk">需要再次确认</span><strong id="version-confirm-title">确认版本治理动作</strong><p id="version-confirm-copy"></p><small id="version-confirm-expiry"></small></div>
+              <label class="agent-confirm"><input type="checkbox" id="version-confirm-check" />我已核对目标版本和影响范围</label>
+              <div class="agent-proposal-actions"><button class="secondary-button compact" id="version-confirm-cancel" type="button">取消</button><button class="primary-button compact" id="version-confirm-execute" type="button" disabled>确认执行</button></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="page" id="page-assets" aria-labelledby="assets-title">
+          <div class="section-head row workbench-head">
+            <div>
+              <h1 id="assets-title">资产库</h1>
+              <p>导入图片或 Excel，核对后登记到资产库。新文件不会自动生效。</p>
+            </div>
+            <span class="agent-mode-stamp">人工确认</span>
+          </div>
+
+          <div class="workbench-identity" id="asset-identity-note">请先进入工作区并选择项目。</div>
+          <div class="workbench-desk" id="asset-desk" hidden>
+            <div class="workbench-toolbar">
+              <label><span>当前项目</span><select id="asset-project-select"></select></label>
+              <div class="package-readout"><span>当前资源库</span><strong id="asset-package-label">读取中</strong></div>
+              <button class="secondary-button compact" id="asset-refresh" type="button">刷新资产</button>
+            </div>
+
+            <div class="template-asset-entry"><div><strong>生成模板</strong><p>导入、试排和选择项目模板。</p></div><a id="asset-template-link" class="secondary-button compact" href="/projects" data-route="brief" data-formal-target="1">选择模板</a></div>
+            <div class="asset-workspace-grid">
+              <details class="workbench-panel asset-intake-panel"><summary>导入资产</summary>
+                <div class="panel-kicker"><span>选择文件</span><b>仅保存文件内容</b></div>
+                <label class="field"><span>上传文件</span><input id="asset-upload-file" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff,.xlsx" hidden /><div class="path-control"><input id="asset-local-path" readonly placeholder="选择 PNG/JPG/WEBP 或 XLSX" /><button id="asset-choose" type="button">选择</button></div></label>
+                <button class="secondary-button" id="asset-freeze" type="button" disabled>加入待导入文件</button>
+                <div class="frozen-assets" id="asset-frozen-list"><div class="workbench-empty compact-empty">尚未选择文件</div></div>
+                <label class="field"><span>使用范围</span><select id="asset-scope"><option value="project">仅当前项目</option><option value="shared">同类型共享</option></select></label>
+                <button class="primary-button" id="asset-stage" type="button" disabled>检查导入影响</button>
+                <small class="field-note">检查通过后仍需人工确认；确认前不会写入导入记录。</small>
+              </details>
+
+              <section class="workbench-panel asset-search-panel">
+                <div class="panel-kicker"><span>查找资产</span><b>当前项目与同类型共享</b></div>
+                <div class="asset-search-controls">
+                  <input id="asset-search-query" aria-label="搜索资产" placeholder="搜索文件名或资产内容" />
+                  <select id="asset-search-kind" aria-label="资产类型"><option value="all">全部</option><option value="image">图片</option><option value="workbook">Excel</option><option value="script">原资产包脚本</option></select>
+                  <button class="secondary-button compact" id="asset-search" type="button" disabled>检索</button>
+                </div>
+                <div class="asset-search-results" id="asset-search-results"><div class="workbench-empty">输入关键词，查找当前项目和同类型共享的图片、Excel及原资产包脚本。</div></div>
+              </section>
+            </div>
+
+            <section class="workbench-panel import-ledger-panel">
+                <div class="panel-kicker"><span>导入记录</span><b>待审核 → 已审核 → 已登记</b></div>
+              <div class="import-ledger" id="asset-imports"><div class="workbench-empty">当前项目还没有导入记录。</div></div>
+            </section>
+
+            <section class="asset-confirmation" id="asset-confirmation" hidden aria-live="polite">
+              <div><span id="asset-confirm-risk">待确认</span><strong id="asset-confirm-title">确认资产操作</strong><p id="asset-confirm-copy">—</p><small id="asset-confirm-expiry">—</small></div>
+              <label class="agent-confirm"><input id="asset-confirm-check" type="checkbox" /> 我已核对本次操作和影响范围</label>
+              <div class="agent-proposal-actions"><button class="primary-button compact" id="asset-confirm-execute" type="button" disabled>确认执行</button><button class="secondary-button compact" id="asset-confirm-cancel" type="button">取消</button></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="page" id="page-governance" aria-labelledby="governance-title">
+          <div class="section-head row workbench-head governance-head">
+            <div>
+              <h1 id="governance-title">创作策略与规则</h1>
+              <p>查看当前项目采用的策略和已生效规则。新建议需审核后才会生效。</p>
+            </div>
+            <span class="agent-mode-stamp">人工确认</span>
+          </div>
+
+          <div class="workbench-identity" id="governance-identity-note">请先进入工作区并选择项目。</div>
+          <div class="workbench-desk governance-desk" id="governance-desk" hidden>
+            <div class="workbench-toolbar governance-toolbar">
+              <label><span>当前项目</span><select id="governance-project-select"></select></label>
+              <div class="package-readout"><span>规则读取顺序</span><strong>公司 → 类别 → 项目 → 个人</strong></div>
+              <button class="secondary-button compact" id="governance-refresh" type="button">刷新规则</button>
+            </div>
+
+            <section class="governance-section strategy-section" aria-labelledby="strategy-section-title">
+              <header class="governance-section-head">
+                <div><span>项目策略</span><h2 id="strategy-section-title">选择叙事策略</h2><p>方向依据当前 Brief、资产包和已确认的创作规范。</p></div>
+                <div class="strategy-readiness" id="strategy-readiness"><b>读取中</b><small>正在核对可比较方向</small></div>
+              </header>
+              <div class="strategy-grid" id="strategy-grid"><div class="workbench-empty">正在读取可选策略…</div></div>
+              <div class="strategy-clarification" id="strategy-clarification" hidden></div>
+            </section>
+
+            <section class="governance-section knowledge-section" aria-labelledby="knowledge-section-title">
+              <header class="governance-section-head">
+                <div><span>创作规则</span><h2 id="knowledge-section-title">创作规则</h2><p>已生效规则与待审核建议分开显示。</p></div>
+                <div class="knowledge-version"><b id="knowledge-version">v0</b><small id="knowledge-role">读取身份权限</small></div>
+              </header>
+
+              <div class="knowledge-grid">
+                <section class="knowledge-rules-panel">
+                  <div class="panel-kicker"><span>已生效规则</span><b>不含待审核建议</b></div>
+                  <div class="rule-scope-grid" id="knowledge-rules"><div class="workbench-empty">当前没有生效规则。</div></div>
+                </section>
+
+                <details class="knowledge-proposal-panel"><summary>提交新规则建议</summary>
+                  <div class="panel-kicker"><span>提交规则建议</span><b>默认仅当前项目</b></div>
+                  <label class="field"><span>生效范围</span><select id="knowledge-scope"><option value="project" selected>当前项目</option><option value="personal">仅我个人</option><option value="category">当前类别</option><option value="company">全公司</option></select></label>
+                  <label class="field"><span>规则内容</span><textarea id="knowledge-statement" rows="4" maxlength="4000" placeholder="例：当前项目的核心事实必须在情绪铺陈前出现"></textarea></label>
+                  <label class="field"><span>选择依据资料（可多选）</span><select id="knowledge-evidence" multiple size="4" aria-describedby="knowledge-evidence-note"></select><small id="knowledge-evidence-note">仅列出当前项目的已保存的需求、版本及素材依据；提交和确认时会重新核对。</small></label>
+                  <button class="primary-button" id="knowledge-propose" type="button">检查规则建议</button>
+                  <small>提交后进入待审核，不会直接成为有效规则。</small>
+                </details>
+              </div>
+
+              <section class="pending-knowledge-panel">
+                <div class="panel-kicker"><span>待审核规则</span><b id="pending-knowledge-count">0 条建议</b></div>
+                <div class="pending-knowledge-list" id="pending-knowledge"><div class="workbench-empty">当前范围没有待审批候选。</div></div>
+              </section>
+            </section>
+
+            <section class="governance-confirmation" id="governance-confirmation" hidden aria-live="polite">
+              <div><span id="governance-confirm-risk">待确认</span><strong id="governance-confirm-title">确认本次操作</strong><dl><div><dt>会改变</dt><dd id="governance-will-change">—</dd></div><div><dt>不会改变</dt><dd id="governance-will-not-change">—</dd></div><div><dt>内容生成</dt><dd id="governance-model-calls">0 次</dd></div><div><dt>影响范围</dt><dd id="governance-impact-scope">—</dd></div></dl><small id="governance-confirm-expiry">—</small></div>
+              <label class="agent-confirm"><input id="governance-confirm-check" type="checkbox" /> 我已核对本次操作和影响范围</label>
+              <div class="agent-proposal-actions"><button class="primary-button compact" id="governance-confirm-execute" type="button" disabled>确认执行</button><button class="secondary-button compact" id="governance-confirm-cancel" type="button">取消</button></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="page" id="page-system" aria-labelledby="system-title">
+          <div class="section-head">
+            <h1 id="system-title">系统状态</h1>
+            <p>查看本机运行依赖是否可用。项目资料和交付状态请在对应项目内检查。</p>
+          </div>
+          <div class="system-grid" id="system-grid"></div>
+          <div class="system-note"><span>当前状态</span><strong>正在读取</strong><p>请稍候。</p></div>
+        </section>
+
+        <section class="page" id="page-admin" aria-labelledby="admin-title">
+          <div class="section-head row">
+            <div><h1 id="admin-title">管理员后台</h1><p>处理异常任务、核对服务情况和审批待办。</p></div>
+            <button class="secondary-button compact" id="formal-admin-refresh" type="button">刷新后台</button>
+          </div>
+          <div class="ui00-business-empty" id="formal-admin-blocked" hidden><strong>管理员权限不可用</strong><p>普通员工不能读取管理员诊断或执行强制恢复。</p></div>
+          <div id="formal-admin-console" hidden>
+            <nav class="admin-section-tabs" aria-label="后台分区"><a href="/admin" data-admin-section="tasks">异常任务</a><a href="/admin?section=system" data-admin-section="system">系统诊断</a><a href="/admin?section=approvals" data-admin-section="approvals">资源审批</a><a href="/admin?section=operations" data-admin-section="operations">运维记录</a></nav>
+            <section data-admin-panel="tasks">
+              <form id="admin-task-filters" class="ui00-task-filters"><label><span>搜索项目或用途</span><input name="query" maxlength="200" /></label><label><span>项目</span><select name="project_id"><option value="">全部项目</option></select></label><label><span>状态</span><select name="status"><option value="">全部状态</option><option value="failed,blocked">未完成或需处理</option><option value="needs_clarification">需要补充信息</option><option value="proposed">待核对</option><option value="waiting_confirmation">待确认</option><option value="waiting_human_review">等待人工审核</option><option value="waiting_user">等待确认</option><option value="partially_completed">部分完成</option><option value="executing">处理中</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label><label><span>创建日期从</span><input name="created_from" type="date" /></label><label><span>至</span><input name="created_to" type="date" /></label><button type="submit" class="secondary-button compact">应用筛选</button></form>
+              <p id="admin-task-scope" class="field-note"></p>
+              <div class="admin-task-layout" id="admin-task-layout">
+                <section class="ui00-panel admin-list-panel"><div class="panel-kicker"><span>任务列表</span><b id="formal-admin-task-count">—</b></div><div id="formal-admin-task-list" class="ui00-project-list" aria-live="polite"></div><nav id="admin-task-pages" class="list-pagination" aria-label="后台任务分页"></nav></section>
+                <section class="ui00-panel admin-detail-panel"><button type="button" class="text-button admin-back" id="admin-task-back">返回任务列表</button><div id="formal-admin-task-detail" aria-live="polite" tabindex="-1"><div class="workbench-empty">选择任务，查看详情和实际可用的恢复方式。</div></div></section>
+              </div>
+            </section>
+            <section data-admin-panel="system" hidden><h2>系统诊断</h2><p>统计范围：当前工作区全部已登记记录。待投递事件与历史失败不等于当前故障。</p><section class="ui00-image-counts" aria-label="管理员诊断摘要"><div><span>数据结构版本</span><strong id="formal-admin-schema">—</strong></div><div><span>待投递事件</span><strong id="formal-admin-outbox">—</strong></div><div><span>历史异常事件</span><strong id="formal-admin-deadletters">—</strong></div></section><div id="admin-provider-verification"></div></section>
+            <section data-admin-panel="approvals" hidden><h2>资源审批</h2><p>查看待处理的资产和规则建议，进入对应页面审核。</p><div id="admin-approval-list" aria-live="polite">尚未读取。</div></section>
+            <section data-admin-panel="operations" hidden><h2>运维记录</h2><p>显示当前工作区最近 30 条记录。</p><div id="formal-admin-operations" class="ui00-project-list"></div></section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+    <script src="/assets/app.js?v=__MPLUS_UI_BUILD__" defer></script>
+    <script src="/assets/image-creation.js?v=__MPLUS_UI_BUILD__" defer></script>
+  <button type="button" id="workbench-assistant-launcher" class="workbench-assistant-launcher" hidden aria-controls="workbench-assistant" aria-expanded="false">✦ 创作助手</button><aside id="workbench-assistant" class="workbench-assistant" hidden aria-label="创作助手"><header id="workbench-assistant-handle"><strong>✦ 创作助手</strong><div><button type="button" class="text-button" data-workbench-minimize aria-label="最小化创作助手">—</button><button type="button" class="text-button" data-workbench-close aria-label="关闭创作助手">×</button></div></header><div class="workbench-assistant-context"><label>本次允许修改<select id="workbench-assistant-scope"><option value="current">当前内容</option><option value="selected">已选内容</option><option value="all">整份当前稿</option></select></label><p id="workbench-assistant-context-copy"></p></div><div id="workbench-assistant-conversation"></div></aside>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "project_id"
+  ],
+  "title": "GetFormalProjectContextInput",
+  "type": "object"
+}

@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "expected_knowledge_version": {
+      "minimum": 0,
+      "title": "Expected Knowledge Version",
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "scope": {
+      "enum": [
+        "company",
+        "category",
+        "project",
+        "personal"
+      ],
+      "title": "Scope",
+      "type": "string"
+    },
+    "statement": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Statement",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$",
+      "title": "Target Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "expected_knowledge_version",
+    "scope",
+    "target_id",
+    "statement",
+    "evidence_refs"
+  ],
+  "title": "CreateKnowledgeCandidateInput",
+  "type": "object"
+}

@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "left_version_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Left Version Id",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "right_version_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Right Version Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "project_id",
+    "left_version_id",
+    "right_version_id"
+  ],
+  "title": "CompareVersionsInput",
+  "type": "object"
+}

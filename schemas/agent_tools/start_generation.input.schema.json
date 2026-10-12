@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "asset_package_version": {
+      "default": "",
+      "maxLength": 120,
+      "title": "Asset Package Version",
+      "type": "string"
+    },
+    "expected_project_version": {
+      "minimum": 0,
+      "title": "Expected Project Version",
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "mode": {
+      "default": "standard",
+      "enum": [
+        "standard",
+        "controlled",
+        "exploration"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "project_id",
+    "expected_project_version"
+  ],
+  "title": "StartGenerationInput",
+  "type": "object"
+}

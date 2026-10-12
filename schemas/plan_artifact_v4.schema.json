@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mplus.local/schemas/plan_artifact_v4.schema.json",
+  "title": "M+ PlanArtifact v4",
+  "type": "object",
+  "required": [
+    "plan_schema_version", "brief_facts", "requirements", "events", "event_graph",
+    "duration_budget", "capacity_report", "shot_plans", "coverage", "traceability",
+    "template_rule_contract", "conflicts", "decision_counts", "planning_audit",
+    "planning_source_status"
+  ],
+  "properties": {
+    "plan_schema_version": {"const": "mplus-plan-artifact/v4"},
+    "template_rule_contract": {
+      "type": "object",
+      "required": ["status", "source", "sha256", "warning_codes", "payload"]
+    },
+    "conflicts": {"type": "array"},
+    "decision_counts": {
+      "type": "object",
+      "required": ["requirements_uncovered", "hard_template_downgrades", "unresolved_conflicts", "unexplained_overrides"],
+      "properties": {
+        "requirements_uncovered": {"type": "integer", "minimum": 0},
+        "hard_template_downgrades": {"type": "integer", "minimum": 0},
+        "unresolved_conflicts": {"type": "integer", "minimum": 0},
+        "unexplained_overrides": {"type": "integer", "minimum": 0}
+      }
+    },
+    "shot_plans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["shot_no", "events", "field_decisions"],
+        "properties": {
+          "field_decisions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["field", "phase", "value_status", "final_value", "candidates", "selected_source", "decision_status", "override_reason_code", "override_reason", "evidence_refs", "conflict_id"]
+            }
+          }
+        }
+      }
+    },
+    "planning_audit": {
+      "type": "object",
+      "required": ["status", "blocking_codes", "clarification_codes", "warning_codes", "findings"],
+      "properties": {"status": {"enum": ["pass", "needs_clarification", "blocked"]}}
+    }
+  }
+}

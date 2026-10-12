@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mplus-public-contract/v1",
+  "title": "M+ Gate-1 Public Contract",
+  "type": "object",
+  "required": ["schema_version", "status"],
+  "properties": {
+    "schema_version": {"const": "mplus-public-contract/v1"},
+    "status": {
+      "enum": [
+        "running",
+        "blocked",
+        "failed",
+        "waiting_human_review",
+        "pending_review",
+        "completed",
+        "published"
+      ]
+    },
+    "artifact_ref": {
+      "type": "string",
+      "pattern": "^artifact://[A-Za-z0-9._~!$&'()*+,;=:@%/-]+$"
+    }
+  },
+  "allOf": [
+    {
+      "description": "Stable entity relations: brief->project; plan->brief; script->project; image->project; task->project; review->version; publication->version. Publication projection is represented by an outbox event and does not write CURRENT directly."
+    }
+  ],
+  "additionalProperties": true
+}

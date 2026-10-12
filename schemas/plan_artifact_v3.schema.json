@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mplus.local/schemas/plan_artifact_v3.schema.json",
+  "title": "M+ PlanArtifact v3",
+  "type": "object",
+  "required": [
+    "plan_schema_version",
+    "brief_facts",
+    "requirements",
+    "events",
+    "event_graph",
+    "duration_budget",
+    "capacity_report",
+    "shot_plans",
+    "coverage",
+    "traceability",
+    "planning_audit",
+    "planning_source_status"
+  ],
+  "properties": {
+    "plan_schema_version": { "const": "mplus-plan-artifact/v3" },
+    "brief_facts": { "type": "array" },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "requirement_id", "original_text", "classification", "mandatory",
+          "fact_status", "position_rule", "evidence_refs", "origin"
+        ],
+        "properties": {
+          "classification": {
+            "enum": [
+              "mandatory_content", "forbidden", "flow_event", "position_constraint",
+              "style_preference", "visual_requirement", "review_preference"
+            ]
+          },
+          "position_rule": {
+            "type": "object",
+            "required": ["type", "anchor_event_id"],
+            "properties": {
+              "type": { "enum": ["opening", "closing", "before", "after", "fixed_shot", "none"] },
+              "anchor_event_id": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "events": { "type": "array" },
+    "event_graph": { "type": "object", "required": ["graph_type", "nodes", "edges"] },
+    "duration_budget": {
+      "type": "object",
+      "required": ["target_seconds", "planned_seconds", "shot_count", "required_shot_units"]
+    },
+    "capacity_report": {
+      "type": "object",
+      "required": [
+        "status", "target_seconds", "required_shot_units", "mandatory_shot_units",
+        "planned_shot_count", "choices"
+      ],
+      "properties": { "status": { "enum": ["ready", "needs_clarification"] } }
+    },
+    "shot_plans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "shot_no", "narrative_stage", "primary_event_id", "primary_event",
+          "event_ids", "events", "requirement_ids", "structure_source",
+          "template_source", "duration_seconds", "brief_evidence", "functional_source",
+          "functional_reference_notice", "transition_reason"
+        ],
+        "properties": {
+          "event_ids": { "type": "array", "minItems": 1 },
+          "events": { "type": "array", "minItems": 1 },
+          "duration_seconds": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "coverage": { "type": "array" },
+    "traceability": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "requirement_id", "brief_text", "classification", "position_rule",
+          "plan_shot_nos", "output_evidence", "template_source", "review_findings",
+          "final_status", "decision_source"
+        ]
+      }
+    },
+    "planning_audit": {
+      "type": "object",
+      "required": ["status", "blocking_codes", "clarification_codes", "warning_codes", "findings"],
+      "properties": { "status": { "enum": ["pass", "needs_clarification", "blocked"] } }
+    },
+    "planning_source_status": {
+      "type": "object",
+      "required": ["source_view", "ai_spec_ready", "status"]
+    }
+  }
+}

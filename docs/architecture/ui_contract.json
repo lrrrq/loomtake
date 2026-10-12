@@ -1,0 +1,172 @@
+{
+  "schema_version": "mplus-ui-contract/v1",
+  "navigation": {
+    "global": [
+      "项目",
+      "任务",
+      "工具与设置"
+    ],
+    "project": [
+      "需求",
+      "创作",
+      "审核与交付"
+    ],
+    "project_auxiliary": [
+      "概览",
+      "项目素材",
+      "模板",
+      "历史版本",
+      "任务",
+      "工具与设置"
+    ]
+  },
+  "routes": {
+    "/projects": {
+      "label": "项目",
+      "permission": "workspace.read"
+    },
+    "/projects/new": {
+      "label": "新建项目",
+      "permission": "workspace.write"
+    },
+    "/tasks": {
+      "label": "任务",
+      "permission": "workspace.read"
+    },
+    "/tasks?view=runs": {
+      "label": "历史运行",
+      "permission": "workspace.read"
+    },
+    "/tools": {
+      "label": "工具与设置",
+      "permission": "workspace.read"
+    },
+    "/assistant": {
+      "label": "项目助手",
+      "permission": "workspace.read",
+      "mode": "confirmed_actions"
+    },
+    "/assets": {
+      "label": "资产库",
+      "permission": "workspace.write"
+    },
+    "/knowledge": {
+      "label": "创作策略与规则",
+      "permission": "workspace.write"
+    },
+    "/system": {
+      "label": "系统状态",
+      "permission": "workspace.read",
+      "mode": "read_only"
+    },
+    "/admin": {
+      "label": "诊断与受控恢复",
+      "permission": "workspace.admin"
+    },
+    "/projects/{project_id}/overview": {
+      "label": "概览",
+      "permission": "project.read"
+    },
+    "/projects/{project_id}/brief": {
+      "label": "需求",
+      "permission": "project.read"
+    },
+    "/projects/{project_id}/materials": {
+      "label": "项目素材",
+      "permission": "project.read"
+    },
+    "/projects/{project_id}/plan": {
+      "label": "规划与生成",
+      "permission": "project.read",
+      "canonical": "/projects/{project_id}/script?panel=structure"
+    },
+    "/projects/{project_id}/script": {
+      "label": "创作",
+      "permission": "project.read",
+      "panels": [
+        "structure",
+        "script",
+        "images"
+      ],
+      "preserved_queries": [
+        "view=versions",
+        "panel=structure|script|images",
+        "shot_id=<stable-shot-id>"
+      ]
+    },
+    "/projects/{project_id}/shot-images": {
+      "label": "逐镜配图",
+      "permission": "project.read",
+      "canonical": "/projects/{project_id}/script?panel=images"
+    },
+    "/projects/{project_id}/review": {
+      "label": "审核与交付",
+      "permission": "project.read"
+    },
+    "/projects/{project_id}/assistant": {
+      "label": "项目助手",
+      "permission": "project.read",
+      "mode": "confirmed_actions"
+    }
+  },
+  "actions": {
+    "project_next_action": {
+      "source": "GET /api/formal/projects/{project_id}/overview",
+      "fields": [
+        "next_action.label",
+        "next_action.href",
+        "next_action.reason",
+        "draft",
+        "saved_delivery"
+      ],
+      "priority": "server_draft_before_saved_version_review_or_delivery"
+    },
+    "task_next_action": {
+      "source": "GET /api/formal/workspaces/{workspace_id}/tasks",
+      "fields": [
+        "next_action",
+        "action_label",
+        "action_href",
+        "issue"
+      ]
+    },
+    "script_review_workbook": {
+      "label": "下载 XLSX 复核稿",
+      "source": "GET /api/formal/projects/{project_id}/script/versions/{version_no}/review-workbook",
+      "availability": "current_saved_version_without_dirty_draft"
+    }
+  },
+  "redirects": [
+    {
+      "from": "/images",
+      "to": "/materials"
+    },
+    {
+      "from": "/projects/{project_id}/images",
+      "to": "/projects/{project_id}/materials"
+    }
+  ],
+  "retired_surfaces": {
+    "page-create": "/projects/new",
+    "page-history": "/tasks?view=runs",
+    "interactive-agent": "/assistant"
+  },
+  "workspace_contract": {
+    "identity": [
+      "project_id",
+      "base_version_id",
+      "revision",
+      "shot_id",
+      "request_generation"
+    ],
+    "save_order": [
+      "browser_input",
+      "server_script_and_image_progress",
+      "unified_change_preview",
+      "saved_script_and_image_version"
+    ],
+    "scope": "actual_business_changes_subset_of_explicit_allowed_shot_ids",
+    "proposal_selection": "server_rebuilds_complete_shot_suggestions_and_digest",
+    "recovery": "query_original_task_and_idempotency_key_before_retry"
+  }
+}

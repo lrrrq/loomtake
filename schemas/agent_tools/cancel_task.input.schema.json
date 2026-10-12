@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "expected_project_version": {
+      "minimum": 0,
+      "title": "Expected Project Version",
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "task_id": {
+      "pattern": "^task_[A-Za-z0-9_-]{8,120}$",
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "project_id",
+    "expected_project_version",
+    "task_id"
+  ],
+  "title": "CancelTaskInput",
+  "type": "object"
+}

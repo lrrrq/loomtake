@@ -1,0 +1,26 @@
+[project]
+name = "mplus-script-tool"
+version = "1.1.3"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "cos-python-sdk-v5>=1.9,<2",
+    "fastapi>=0.128,<0.129",
+    "httpx>=0.28,<1",
+    "jsonschema>=4,<5",
+    "openpyxl==3.1.5",
+    "pillow>=12,<13",
+    "psycopg[binary]>=3.2,<4",
+    "pypdf>=6,<7",
+    "python-multipart>=0.0.20,<1",
+    "reportlab>=4,<5",
+    "uvicorn>=0.39,<0.40",
+]
+
+[dependency-groups]
+dev = [
+    "playwright>=1.57,<2",
+    "pytest>=9,<10",
+]
+
+[tool.uv]
+package = false

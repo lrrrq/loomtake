@@ -1,0 +1,56 @@
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+~$*
+.~*
+
+# 密钥与本机配置
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python 缓存与测试缓存
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Codex / 本机索引与过程状态
+.codegraph/
+.context/
+.omc/
+.superpowers/
+
+# 原始业务资料、脚本库和素材（只在本机保存）
+整理后脚本库/
+网页输出/
+
+# 运行产物与验收缓存；保留 方案/ 下的 Markdown 规划文件
+方案/mvp-real-run/
+方案/mvp-v2-run/
+方案/p0-validation/
+方案/p1-validation/
+方案/state/
+
+# 根目录历史生成结果
+/*.xlsx
+/*.xlsm
+/*.audit.json
+/*.loop.json
+/*.visual_review.html
+
+# 临时运行目录
+dist/
+build/
+outputs/
+reports/
+data/
+/output/
+/.playwright-cli/
+/evidence/

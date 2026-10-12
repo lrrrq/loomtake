@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "expected_project_version": {
+      "minimum": 0,
+      "title": "Expected Project Version",
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "plan_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Plan Sha256",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "strategy_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,63}$",
+      "title": "Strategy Id",
+      "type": "string"
+    },
+    "strategy_portfolio_ref": {
+      "pattern": "^artifact://[A-Za-z0-9._~!$&'()*+,;=:@%/-]+$",
+      "title": "Strategy Portfolio Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "project_id",
+    "expected_project_version",
+    "strategy_portfolio_ref",
+    "plan_sha256",
+    "strategy_id"
+  ],
+  "title": "SelectCreativeStrategyInput",
+  "type": "object"
+}

@@ -1,0 +1,89 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "base_version_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Base Version Id",
+      "type": "string"
+    },
+    "entrypoint": {
+      "const": "history",
+      "default": "history",
+      "title": "Entrypoint",
+      "type": "string"
+    },
+    "evidence": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Evidence",
+      "type": "string"
+    },
+    "expected_project_version": {
+      "minimum": 0,
+      "title": "Expected Project Version",
+      "type": "integer"
+    },
+    "field": {
+      "enum": [
+        "项目名称",
+        "品牌或客户",
+        "脚本类型",
+        "行业或活动类别",
+        "视频目标",
+        "使用场景",
+        "目标时长",
+        "必须出现的内容",
+        "禁止或不能出现的内容",
+        "关键事件与流程",
+        "特殊需求"
+      ],
+      "title": "Field",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "parent_brief_snapshot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Parent Brief Snapshot Id",
+      "type": "string"
+    },
+    "parent_brief_version_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Parent Brief Version Id",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "value": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Value",
+      "type": "string"
+    },
+    "workspace_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Workspace Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "project_id",
+    "expected_project_version",
+    "workspace_id",
+    "base_version_id",
+    "parent_brief_version_id",
+    "parent_brief_snapshot_id",
+    "field",
+    "value",
+    "evidence"
+  ],
+  "title": "ApplyFormalFactRevisionInput",
+  "type": "object"
+}

@@ -1,0 +1,36 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "expected_project_version": {
+      "minimum": 0,
+      "title": "Expected Project Version",
+      "type": "integer"
+    },
+    "generation_mode": {
+      "enum": [
+        "image_backed",
+        "text_only_draft"
+      ],
+      "title": "Generation Mode",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "project_id",
+    "expected_project_version",
+    "generation_mode"
+  ],
+  "title": "PrepareFormalPlanInput",
+  "type": "object"
+}

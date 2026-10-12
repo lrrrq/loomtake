@@ -1,0 +1,22 @@
+{
+  "schema_version": "mplus-cloud-retention/v1",
+  "cos_region": "ap-guangzhou",
+  "rules": [
+    {"prefix": "mplus/runs/", "kind": "input_and_logs", "expire_days": 90},
+    {"prefix": "mplus/runs/", "kind": "formal_delivery", "expire_days": 365},
+    {"prefix": "mplus/packages/", "kind": "production_package", "expire_days": null},
+    {"prefix": "mplus/legacy/", "kind": "selected_history", "expire_days": null}
+  ],
+  "database": {"rpo_hours": 24, "rto_hours": 4},
+  "capacity": {
+    "max_concurrent_runs": 2,
+    "max_input_file_bytes": 524288000,
+    "max_run_input_bytes": 2147483648,
+    "max_run_seconds": 10800
+  },
+  "alerts": {
+    "queue_wait_minutes": 30,
+    "monthly_cost_warning_cny": 400,
+    "monthly_cost_high_cny": 500
+  }
+}

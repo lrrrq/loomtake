@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Loomtake Alpha 项目中控台</title>
+    <style>
+      :root { color-scheme: light; --ink:#161713; --paper:#f2f0e9; --acid:#c8ff00; --line:#b8b6ac; --muted:#686961; --danger:#a51d1d; }
+      * { box-sizing:border-box; } body { margin:0; background:var(--paper); color:var(--ink); font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Monaco,"PingFang SC",monospace; }
+      main { width:min(1180px,100%); margin:0 auto; padding:28px 22px 52px; } header { display:flex; gap:10px; align-items:center; flex-wrap:wrap; border-bottom:2px solid var(--ink); padding-bottom:20px; }
+      h1 { font:700 clamp(24px,4vw,43px)/1 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; letter-spacing:-.07em; margin:0 auto 0 0; } .badge { border:1px solid var(--ink); padding:6px 9px; font-weight:800; } .alpha { background:var(--acid); } .blocked { background:var(--ink); color:white; }
+      .notice { margin:18px 0 24px; max-width:900px; color:var(--muted); } .grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:14px; } .card { grid-column:span 6; border:1px solid var(--ink); background:#faf9f4; padding:16px; min-width:0; } .wide { grid-column:span 12; }
+      h2 { margin:0 0 12px; font-size:13px; letter-spacing:.04em; text-transform:uppercase; } label { display:block; margin:10px 0 5px; font-weight:700; } input, textarea, select { width:100%; border:1px solid var(--ink); background:white; color:var(--ink); padding:9px; font:inherit; } textarea { min-height:88px; resize:vertical; }
+      button { border:1px solid var(--ink); background:var(--acid); color:var(--ink); padding:9px 12px; margin-top:11px; font:800 13px/1 ui-monospace,SFMono-Regular,monospace; cursor:pointer; } button.secondary { background:#fff; } button:disabled { opacity:.45; cursor:not-allowed; }
+      pre { margin:12px 0 0; border-top:1px solid var(--line); padding-top:10px; white-space:pre-wrap; overflow-wrap:anywhere; color:#333; } .status { min-height:21px; margin-top:9px; color:var(--muted); } .error { color:var(--danger); font-weight:700; } .item { border-top:1px solid var(--line); padding:10px 0; } .item:first-child { border-top:0; } .mono-note { color:var(--muted); font-size:12px; }
+      @media (max-width:720px) { .card { grid-column:span 12; } main { padding:20px 14px 38px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Loomtake Alpha 项目中控台</h1>
+        <span class="badge alpha">Alpha：执行中</span>
+        <span class="badge blocked">生产认证：BLOCK</span>
+      </header>
+      <p class="notice">仅连接匿名 fixture、隔离数据库、隔离存储和独立端口。此处不提供正式发布、真实 CURRENT 或生产认证；问题镜头与整片确认均保留持久事件证据。</p>
+      <section class="grid" aria-label="项目中控操作区">
+        <section class="card wide">
+          <h2>00 / 创建与确认 Alpha Brief</h2>
+          <div class="grid"><div class="card"><label for="project-name">项目名称</label><input id="project-name" data-testid="project-name" value="匿名 Alpha 项目" /><label for="category-id">类别</label><input id="category-id" data-testid="category-id" value="launch" /></div><div class="card"><label for="documents">已放入隔离 inputs 的文件名（每行一个）</label><textarea id="documents" data-testid="documents" placeholder="brief.txt"></textarea><button id="create-project" data-testid="create-project">创建空项目</button><button id="freeze-import" data-testid="freeze-import" class="secondary">冻结并导入</button><button id="confirm-brief" data-testid="confirm-brief" class="secondary">确认并绑定 Brief</button></div></div>
+          <pre id="brief-state" data-testid="brief-state">尚未创建项目。</pre>
+        </section>
+        <section class="card wide">
+          <h2>01 / 进入已存在项目</h2>
+          <label for="token">Alpha 访问令牌</label><input id="token" data-testid="auth-token" autocomplete="off" />
+          <label for="workspace">工作区 ID</label><input id="workspace" data-testid="workspace-id" autocomplete="off" />
+          <button id="load-projects" data-testid="load-projects">读取隔离项目</button>
+          <label for="project">项目</label><select id="project" data-testid="project-select"><option value="">先读取项目</option></select>
+          <p class="mono-note">集成模式只按 project_id 读取已绑定的确认 Brief；不接受客户端 Brief ref/SHA。</p>
+          <button id="enter-project" data-testid="enter-project">进入已绑定项目</button>
+          <button id="create-session" data-testid="create-session" class="secondary">创建受控消息会话</button>
+          <p id="entry-status" class="status" role="status"></p>
+          <pre id="project-state" data-testid="project-state">尚未进入项目。</pre>
+        </section>
+        <section class="card wide">
+          <h2>05 / 逐镜图片与 Excel 快照</h2>
+          <label for="script-rows">脚本镜头 JSON</label><textarea id="script-rows" data-testid="script-rows">[{"镜号":"1","结构":"开场","画面描述":"匿名开场"},{"镜号":"2","结构":"收束","画面描述":"匿名收束"}]</textarea>
+          <p class="mono-note">隔离 fixture：provider_calls=0。项目经理逐镜选择后才会写入人工 actor/time 和来源证据；这不构成真实 Provider 视觉质量通过。</p><button id="prepare-images" data-testid="prepare-images">准备每镜候选图（fixture / provider_calls=0）</button><button id="replace-image" data-testid="replace-image" class="secondary">定向换第 1 镜</button><button id="deliver-images" data-testid="deliver-images" class="secondary">确认图片并下载 Excel</button>
+          <pre id="image-state" data-testid="image-state">尚未准备图片。</pre>
+        </section>
+        <section class="card">
+          <h2>02 / 消息与确认</h2>
+          <label for="message">自然语言指令</label><textarea id="message" data-testid="message" placeholder="例如：把第 3 镜文案修改为匿名新品"></textarea>
+          <button id="send-message" data-testid="send-message">提交消息</button>
+          <button id="confirm-task" data-testid="confirm-task" class="secondary" disabled>确认当前提议</button>
+          <p class="mono-note">只有 API 返回的低风险提议可确认；高风险词会被 Alpha API 拒绝。</p>
+          <pre id="message-state" data-testid="message-state">尚无消息。</pre>
+        </section>
+        <section class="card">
+          <h2>03 / 问题镜头处理</h2>
+          <button id="load-problems" data-testid="load-problems" class="secondary">读取已验证问题镜头</button>
+          <div id="problem-list" data-testid="problem-list">尚未读取。</div>
+          <label for="shot-decision">人工结论</label><select id="shot-decision" data-testid="shot-decision"><option value="needs_revision">需修改</option><option value="accepted_with_note">带注释接受</option></select>
+          <label for="shot-evidence">证据 ref</label><input id="shot-evidence" data-testid="shot-evidence" placeholder="artifact://review/…" />
+          <button id="confirm-shot" data-testid="confirm-shot">保存问题镜头确认</button>
+          <pre id="shot-state" data-testid="shot-state">尚无确认。</pre>
+        </section>
+        <section class="card wide">
+          <h2>04 / 整片脚本人工确认</h2>
+          <div class="grid"><div class="card"><label for="version-id">版本 ID</label><input id="version-id" data-testid="version-id" /></div><div class="card"><label for="whole-evidence">证据 ref</label><input id="whole-evidence" data-testid="whole-evidence" placeholder="artifact://review/…" /></div></div>
+          <button id="confirm-whole" data-testid="confirm-whole">记录整片 quality_pass</button>
+          <p class="mono-note">该动作只记录 actor / time / version / evidence；不发布，不写 CURRENT。</p>
+          <pre id="whole-state" data-testid="whole-state">尚无整片确认。</pre>
+        </section>
+      </section>
+    </main>
+    <script>
+      const state = { projectId: '', sessionId: '', projectVersion: null, proposal: null, problemShot: '', imported: null, candidates: [] };
+      const byId = (id) => document.getElementById(id);
+      const text = (id, value, error = false) => { const e = byId(id); e.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2); e.classList.toggle('error', error); };
+      const auth = () => ({ 'X-MPlus-Agent-Auth': byId('token').value.trim() });
+      const request = async (path, options = {}) => { const r = await fetch(path, { ...options, headers: { ...auth(), ...(options.headers || {}), ...(options.body ? {'Content-Type':'application/json'} : {}) } }); const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(body?.detail?.code || `HTTP_${r.status}`); return body; };
+      const input = (id) => byId(id).value.trim();
+      const rows = () => JSON.parse(input('script-rows'));
+      const projectPath = () => { if (!state.projectId) throw new Error('PROJECT_REQUIRED'); return `/api/alpha/projects/${encodeURIComponent(state.projectId)}`; };
+      const error = (target, e) => text(target, `操作未执行：${e.message}`, true);
+      const refreshDashboard = async () => { const query=state.sessionId?`?agent_session_id=${encodeURIComponent(state.sessionId)}`:''; const dashboard=await request(`${projectPath()}${query}`); state.projectVersion=dashboard.project.project_version; const versions=dashboard.versions||[]; if(versions.length) byId('version-id').value=versions[versions.length-1].version_id; text('project-state',dashboard); return dashboard; };
+      const persist = () => localStorage.setItem('mplus-alpha-state', JSON.stringify({token:input('token'),workspace:input('workspace'),projectId:state.projectId,sessionId:state.sessionId}));
+      const restore = async () => { try { const saved=JSON.parse(localStorage.getItem('mplus-alpha-state')||'{}'); byId('token').value=saved.token||''; byId('workspace').value=saved.workspace||''; state.projectId=saved.projectId||''; state.sessionId=saved.sessionId||''; if(state.projectId&&input('token')) await refreshDashboard(); } catch(e) { error('entry-status',e); } };
+      byId('create-project').onclick = async () => { try { const body = await request('/api/alpha/projects', {method:'POST', body:JSON.stringify({workspace_id:input('workspace'), expected_workspace_version:0, name:input('project-name'), category_id:input('category-id')})}); state.projectId=body.project_id; state.projectVersion=body.project_version; persist(); text('brief-state', body); } catch(e) { error('brief-state',e); } };
+      byId('freeze-import').onclick = async () => { try { const documents=input('documents').split(/\n/).map((path)=>({path:path.trim()})).filter((x)=>x.path); await request(`${projectPath()}/brief-inputs/freeze`, {method:'POST',body:JSON.stringify({documents})}); state.imported=await request(`${projectPath()}/brief-imports`, {method:'POST',body:JSON.stringify({documents})}); text('brief-state',state.imported); } catch(e) { error('brief-state',e); } };
+      byId('confirm-brief').onclick = async () => { try { if(!state.imported) throw new Error('IMPORT_REQUIRED'); const body=await request(`${projectPath()}/brief-confirmations`, {method:'POST',body:JSON.stringify({imported:state.imported,expected_project_version:state.projectVersion})}); state.projectVersion=body.snapshot.project_version; text('brief-state',body); } catch(e) { error('brief-state',e); } };
+      byId('load-projects').onclick = async () => { try { const body = await request(`/api/alpha/projects?workspace_id=${encodeURIComponent(input('workspace'))}`); const select = byId('project'); select.innerHTML = '<option value="">选择一个隔离项目</option>'; body.items.forEach((p) => { const option = document.createElement('option'); option.value = p.project_id; option.textContent = `${p.name} / ${p.project_id}`; select.append(option); }); text('entry-status', `已读取 ${body.items.length} 个隔离项目。`); } catch (e) { error('entry-status', e); } };
+      byId('project').onchange = () => { state.projectId = byId('project').value; state.sessionId = ''; state.proposal = null; persist(); byId('confirm-task').disabled = true; };
+      byId('enter-project').onclick = async () => { try { const entry = await request(`${projectPath()}/enter`, { method:'POST' }); const dashboard = await refreshDashboard(); text('entry-status', '已读取已绑定确认 Brief 并进入持久项目；已刷新 Dashboard。'); text('project-state', {entry, dashboard}); } catch (e) { error('entry-status', e); } };
+      byId('create-session').onclick = async () => { try { const body = await request(`${projectPath()}/sessions`, { method:'POST' }); state.sessionId = body.session.agent_session_id; persist(); await refreshDashboard(); text('entry-status', `会话已创建：${state.sessionId}`); } catch (e) { error('entry-status', e); } };
+      byId('send-message').onclick = async () => { try { if (!state.sessionId) throw new Error('SESSION_REQUIRED'); const body = await request(`/api/alpha/sessions/${encodeURIComponent(state.sessionId)}/messages`, { method:'POST', body:JSON.stringify({content:input('message')}) }); state.proposal = body.response?.proposal_digest ? { taskId:body.task.task_id, digest:body.response.proposal_digest } : null; byId('confirm-task').disabled = !state.proposal; text('message-state', body); } catch (e) { error('message-state', e); } };
+      byId('confirm-task').onclick = async () => { try { if (!state.proposal) throw new Error('NO_ACTION_PROPOSAL'); const body = await request(`/api/alpha/tasks/${encodeURIComponent(state.proposal.taskId)}/confirm`, { method:'POST', body:JSON.stringify({proposal_digest:state.proposal.digest}) }); if (!Number.isInteger(body.current_project_version)) throw new Error('AUTHORITATIVE_PROJECT_VERSION_REQUIRED'); state.projectVersion=body.current_project_version; byId('confirm-task').disabled = true; await refreshDashboard(); text('message-state', body); } catch (e) { error('message-state', e); } };
+      byId('load-problems').onclick = async () => { try { const body = await request(`${projectPath()}/problem-shots`); const list = byId('problem-list'); list.innerHTML = ''; (body.items || []).forEach((item) => { const row = document.createElement('div'); row.className = 'item'; const button = document.createElement('button'); button.className = 'secondary'; button.textContent = `处理第 ${item.shot_no || '?'} 镜`; button.onclick = () => { state.problemShot = item.shot_no || ''; text('shot-state', `已选择第 ${state.problemShot} 镜；填写证据后保存。`); }; row.textContent = `第 ${item.shot_no || '?'} 镜 / ${item.code} / ${item.message} `; row.append(button); list.append(row); }); if (!body.items?.length) list.textContent = '没有机器问题项。'; } catch (e) { error('shot-state', e); } };
+      byId('confirm-shot').onclick = async () => { try { if (!state.sessionId) throw new Error('SESSION_REQUIRED'); if (!state.problemShot) throw new Error('SHOT_REQUIRED'); const body = await request(`${projectPath()}/problem-shot-confirmations`, { method:'POST', body:JSON.stringify({agent_session_id:state.sessionId, shot_no:state.problemShot, decision:input('shot-decision'), evidence_ref:input('shot-evidence'), expected_project_version:state.projectVersion}) }); state.projectVersion = body.project_version_after; text('shot-state', body); } catch (e) { error('shot-state', e); } };
+      byId('confirm-whole').onclick = async () => { try { const body = await request(`${projectPath()}/whole-script-confirmations`, { method:'POST', body:JSON.stringify({version_id:input('version-id'), evidence_ref:input('whole-evidence'), expected_project_version:state.projectVersion}) }); state.projectVersion = body.review.project_version; text('whole-state', body); } catch (e) { error('whole-state', e); } };
+      byId('prepare-images').onclick = async () => { try { const body=await request(`${projectPath()}/images/prepare`,{method:'POST',body:JSON.stringify({script_rows:rows()})}); state.candidates=body.candidates; text('image-state',body); } catch(e) { error('image-state',e); } };
+      byId('replace-image').onclick = async () => { try { const body=await request(`${projectPath()}/images/1/replace`,{method:'POST',body:JSON.stringify({script_rows:rows()})}); state.candidates=state.candidates.map((x)=>x.shot_no==='1'?body.candidate:x); text('image-state',body); } catch(e) { error('image-state',e); } };
+      byId('deliver-images').onclick = async () => { try { if(!state.candidates.length) throw new Error('IMAGE_CANDIDATES_REQUIRED'); const body=await request(`${projectPath()}/image-deliveries`,{method:'POST',body:JSON.stringify({version_id:input('version-id'),script_rows:rows(),selections:state.candidates.map((x)=>({shot_no:x.shot_no,candidate_id:x.candidate_id}))})}); const url=`${projectPath()}/image-deliveries/${body.delivery_sha256}/workbook`; const response=await fetch(url,{headers:auth()}); if(!response.ok) throw new Error('EXCEL_DOWNLOAD_FAILED'); const anchor=document.createElement('a'); anchor.href=URL.createObjectURL(await response.blob()); anchor.download='alpha-image-delivery.xlsx'; anchor.click(); setTimeout(()=>URL.revokeObjectURL(anchor.href),1000); text('image-state',{...body,excel_downloaded:true}); } catch(e) { error('image-state',e); } };
+      queueMicrotask(restore);
+    </script>
+  </body>
+</html>

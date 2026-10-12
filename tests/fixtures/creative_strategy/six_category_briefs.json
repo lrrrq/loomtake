@@ -1,0 +1,154 @@
+{
+  "cases": [
+    {
+      "script_type": "发布会",
+      "brief": {
+        "项目名称": "匿名发布项目",
+        "脚本类型": "发布会",
+        "品牌或客户": "匿名品牌甲",
+        "行业或活动类别": "科技活动",
+        "视频时长": "60s",
+        "风格调性": "清晰、克制",
+        "必须出现的内容": "来宾入场、核心发布、品牌收束",
+        "禁忌或不能出现的内容": "不补造发布数据",
+        "Brief来源文件": "anonymous-launch-brief.xlsx",
+        "Brief来源 sheet": "Brief",
+        "Brief来源行": 2,
+        "Brief来源 SHA256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "叙事重点": "核心发布",
+        "重点前置理由": "Brief 明确核心发布是首要传播信息",
+        "情绪递进理由": "Brief 明确从现场建立逐步推进至核心发布",
+        "planning_events": [
+          {"title": "来宾入场", "evidence": "Brief 明确来宾入场", "shot_units": 1, "emotional_intensity": 1, "emotion_evidence": "Brief 标记为低强度建立"},
+          {"title": "核心发布", "evidence": "Brief 明确核心发布", "shot_units": 1, "emphasis": true, "emphasis_evidence": "Brief 标记为首要传播信息", "emotional_intensity": 3, "emotion_evidence": "Brief 标记为最高强度事件"},
+          {"title": "品牌收束", "evidence": "Brief 明确品牌收束", "shot_units": 1, "emotional_intensity": 2, "emotion_evidence": "Brief 标记为中强度承接"}
+        ]
+      }
+    },
+    {
+      "script_type": "展会",
+      "brief": {
+        "项目名称": "匿名展会项目",
+        "脚本类型": "展会",
+        "品牌或客户": "匿名品牌乙",
+        "行业或活动类别": "行业展会",
+        "视频时长": "12s",
+        "风格调性": "真实、有序",
+        "必须出现的内容": "展区建立、核心展品体验、品牌收束",
+        "禁忌或不能出现的内容": "不补造展品参数",
+        "Brief来源文件": "anonymous-exhibition-brief.xlsx",
+        "Brief来源 sheet": "Brief",
+        "Brief来源行": 2,
+        "Brief来源 SHA256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "叙事重点": "核心展品体验",
+        "重点前置理由": "Brief 明确核心展品体验是首要传播信息",
+        "情绪递进理由": "Brief 明确从展区建立逐步推进至核心展品体验",
+        "planning_events": [
+          {"title": "展区建立", "evidence": "Brief 明确展区建立", "shot_units": 1, "emotional_intensity": 1, "emotion_evidence": "Brief 标记为低强度建立"},
+          {"title": "核心展品体验", "evidence": "Brief 明确核心展品体验", "shot_units": 1, "emphasis": true, "emphasis_evidence": "Brief 标记为首要传播信息", "emotional_intensity": 3, "emotion_evidence": "Brief 标记为最高强度事件"},
+          {"title": "品牌收束", "evidence": "Brief 明确品牌收束", "shot_units": 1, "emotional_intensity": 2, "emotion_evidence": "Brief 标记为中强度承接"}
+        ]
+      }
+    },
+    {
+      "script_type": "年会",
+      "brief": {
+        "项目名称": "匿名年会项目",
+        "脚本类型": "年会",
+        "品牌或客户": "匿名组织丙",
+        "行业或活动类别": "内部活动",
+        "视频时长": "12s",
+        "风格调性": "温暖、真实",
+        "必须出现的内容": "员工入场、年度成果、集体收束",
+        "禁忌或不能出现的内容": "不补造业绩数据",
+        "Brief来源文件": "anonymous-annual-brief.xlsx",
+        "Brief来源 sheet": "Brief",
+        "Brief来源行": 2,
+        "Brief来源 SHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "叙事重点": "年度成果",
+        "重点前置理由": "Brief 明确年度成果是首要传播信息",
+        "情绪递进理由": "Brief 明确从员工入场逐步推进至年度成果",
+        "planning_events": [
+          {"title": "员工入场", "evidence": "Brief 明确员工入场", "shot_units": 1, "emotional_intensity": 1, "emotion_evidence": "Brief 标记为低强度建立"},
+          {"title": "年度成果", "evidence": "Brief 明确年度成果", "shot_units": 1, "emphasis": true, "emphasis_evidence": "Brief 标记为首要传播信息", "emotional_intensity": 3, "emotion_evidence": "Brief 标记为最高强度事件"},
+          {"title": "集体收束", "evidence": "Brief 明确集体收束", "shot_units": 1, "emotional_intensity": 2, "emotion_evidence": "Brief 标记为中强度承接"}
+        ]
+      }
+    },
+    {
+      "script_type": "赛事",
+      "brief": {
+        "项目名称": "匿名赛事项目",
+        "脚本类型": "赛事",
+        "品牌或客户": "匿名组织丁",
+        "行业或活动类别": "竞技活动",
+        "视频时长": "12s",
+        "风格调性": "紧凑、真实",
+        "必须出现的内容": "场地建立、核心对抗、赛后收束",
+        "禁忌或不能出现的内容": "不补造比赛结果",
+        "Brief来源文件": "anonymous-sports-brief.xlsx",
+        "Brief来源 sheet": "Brief",
+        "Brief来源行": 2,
+        "Brief来源 SHA256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "叙事重点": "核心对抗",
+        "重点前置理由": "Brief 明确核心对抗是首要传播信息",
+        "情绪递进理由": "Brief 明确从场地建立逐步推进至核心对抗",
+        "planning_events": [
+          {"title": "场地建立", "evidence": "Brief 明确场地建立", "shot_units": 1, "emotional_intensity": 1, "emotion_evidence": "Brief 标记为低强度建立"},
+          {"title": "核心对抗", "evidence": "Brief 明确核心对抗", "shot_units": 1, "emphasis": true, "emphasis_evidence": "Brief 标记为首要传播信息", "emotional_intensity": 3, "emotion_evidence": "Brief 标记为最高强度事件"},
+          {"title": "赛后收束", "evidence": "Brief 明确赛后收束", "shot_units": 1, "emotional_intensity": 2, "emotion_evidence": "Brief 标记为中强度承接"}
+        ]
+      }
+    },
+    {
+      "script_type": "音乐节",
+      "brief": {
+        "项目名称": "匿名音乐项目",
+        "脚本类型": "音乐节",
+        "品牌或客户": "匿名组织戊",
+        "行业或活动类别": "现场演出",
+        "视频时长": "12s",
+        "风格调性": "鲜明、真实",
+        "必须出现的内容": "观众入场、核心演出、现场收束",
+        "禁忌或不能出现的内容": "不补造艺人身份",
+        "Brief来源文件": "anonymous-music-brief.xlsx",
+        "Brief来源 sheet": "Brief",
+        "Brief来源行": 2,
+        "Brief来源 SHA256": "5555555555555555555555555555555555555555555555555555555555555555",
+        "叙事重点": "核心演出",
+        "重点前置理由": "Brief 明确核心演出是首要传播信息",
+        "情绪递进理由": "Brief 明确从观众入场逐步推进至核心演出",
+        "planning_events": [
+          {"title": "观众入场", "evidence": "Brief 明确观众入场", "shot_units": 1, "emotional_intensity": 1, "emotion_evidence": "Brief 标记为低强度建立"},
+          {"title": "核心演出", "evidence": "Brief 明确核心演出", "shot_units": 1, "emphasis": true, "emphasis_evidence": "Brief 标记为首要传播信息", "emotional_intensity": 3, "emotion_evidence": "Brief 标记为最高强度事件"},
+          {"title": "现场收束", "evidence": "Brief 明确现场收束", "shot_units": 1, "emotional_intensity": 2, "emotion_evidence": "Brief 标记为中强度承接"}
+        ]
+      }
+    },
+    {
+      "script_type": "明星活动",
+      "brief": {
+        "项目名称": "匿名嘉宾活动",
+        "脚本类型": "明星活动",
+        "品牌或客户": "匿名品牌己",
+        "行业或活动类别": "品牌活动",
+        "视频时长": "12s",
+        "风格调性": "克制、真实",
+        "必须出现的内容": "空间建立、嘉宾亮相、品牌收束",
+        "禁忌或不能出现的内容": "不补造嘉宾身份",
+        "Brief来源文件": "anonymous-star-brief.xlsx",
+        "Brief来源 sheet": "Brief",
+        "Brief来源行": 2,
+        "Brief来源 SHA256": "6666666666666666666666666666666666666666666666666666666666666666",
+        "叙事重点": "嘉宾亮相",
+        "重点前置理由": "Brief 明确嘉宾亮相是首要传播信息",
+        "情绪递进理由": "Brief 明确从空间建立逐步推进至嘉宾亮相",
+        "planning_events": [
+          {"title": "空间建立", "evidence": "Brief 明确空间建立", "shot_units": 1, "emotional_intensity": 1, "emotion_evidence": "Brief 标记为低强度建立"},
+          {"title": "嘉宾亮相", "evidence": "Brief 明确嘉宾亮相", "shot_units": 1, "emphasis": true, "emphasis_evidence": "Brief 标记为首要传播信息", "emotional_intensity": 3, "emotion_evidence": "Brief 标记为最高强度事件"},
+          {"title": "品牌收束", "evidence": "Brief 明确品牌收束", "shot_units": 1, "emotional_intensity": 2, "emotion_evidence": "Brief 标记为中强度承接"}
+        ]
+      }
+    }
+  ]
+}

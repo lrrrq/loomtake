@@ -1,0 +1,10 @@
+# 兼容旧的 --with-requirements 入口；正式启动与测试以 pyproject.toml + uv.lock 为准。
+fastapi>=0.128,<0.129
+uvicorn>=0.39,<0.40
+openpyxl==3.1.5
+pillow>=12,<13
+httpx>=0.28,<1
+python-multipart>=0.0.20,<1
+pypdf>=6,<7
+jsonschema>=4,<5
+reportlab>=4,<5

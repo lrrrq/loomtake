@@ -1,0 +1,15 @@
+{
+  "fixture_id": "anonymous-conference-arrival-001",
+  "filename": "anonymous-conference-arrival.png",
+  "sha256": "6a48d3259505d33448677b398dcb97b16a35b7f1f636aec3be5bf013e9b2f889",
+  "source_kind": "anonymous_business_fixture",
+  "source": "Anonymous synthetic conference-arrival photograph created solely for this repository's isolated test fixture.",
+  "rights_notice": "Redistributable repository test fixture; no client material, no brand, no identifiable person, and no external licensed source.",
+  "analysis": {
+    "status": "pass",
+    "caption": "多人嘉宾进入活动现场的广角实拍画面。",
+    "tags": ["conference_arrival", "audience", "people", "event_hall"],
+    "semantic_status": "human_confirmed",
+    "semantic_review_note": "Fixture reviewer visually confirmed an arrival scene; this field is limited to fixture semantic evidence and is not a final quality confirmation."
+  }
+}

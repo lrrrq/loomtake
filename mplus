@@ -1,0 +1,22 @@
+#!/bin/zsh
+
+set -u
+
+PROJECT_DIR="${0:A:h}"
+cd "$PROJECT_DIR" || exit 1
+
+if [[ -z "${MPLUS_PROFILE:-}" ]]; then
+  WORKTREE_PROFILE="$(git config --worktree --get mplus.profile 2>/dev/null || true)"
+  export MPLUS_PROFILE="${WORKTREE_PROFILE:-stable}"
+fi
+
+if command -v uv >/dev/null 2>&1; then
+  UV_BIN="$(command -v uv)"
+elif [[ -x "$HOME/.local/bin/uv" ]]; then
+  UV_BIN="$HOME/.local/bin/uv"
+else
+  echo "未找到 uv，无法启动 M+。"
+  exit 127
+fi
+
+exec "$UV_BIN" run --locked --no-dev --python 3.10 python -m mvp_v2.command "$@"

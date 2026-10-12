@@ -1,0 +1,52 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "category_id": {
+      "pattern": "^[a-z][a-z0-9_-]{1,63}$",
+      "title": "Category Id",
+      "type": "string"
+    },
+    "expected_active_package_version": {
+      "minimum": 0,
+      "title": "Expected Active Package Version",
+      "type": "integer"
+    },
+    "file_refs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 500,
+      "minItems": 1,
+      "title": "File Refs",
+      "type": "array"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "scope": {
+      "enum": [
+        "project",
+        "shared"
+      ],
+      "title": "Scope",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "package_id",
+    "expected_active_package_version",
+    "category_id",
+    "scope",
+    "file_refs"
+  ],
+  "title": "CreateAssetImportInput",
+  "type": "object"
+}

@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "brief_snapshot": {
+      "additionalProperties": true,
+      "minProperties": 1,
+      "title": "Brief Snapshot",
+      "type": "object"
+    },
+    "category_id": {
+      "pattern": "^[a-z][a-z0-9_-]{1,63}$",
+      "title": "Category Id",
+      "type": "string"
+    },
+    "expected_workspace_version": {
+      "minimum": 0,
+      "title": "Expected Workspace Version",
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 180,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "workspace_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Workspace Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "expected_workspace_version",
+    "workspace_id",
+    "category_id",
+    "name",
+    "brief_snapshot"
+  ],
+  "title": "CreateProjectInput",
+  "type": "object"
+}

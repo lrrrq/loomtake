@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mplus.local/schemas/plan_artifact_v2.schema.json",
+  "title": "M+ PlanArtifact v2",
+  "type": "object",
+  "required": [
+    "plan_schema_version",
+    "brief_facts",
+    "events",
+    "event_graph",
+    "duration_budget",
+    "shot_plans",
+    "planning_audit",
+    "planning_source_status"
+  ],
+  "properties": {
+    "plan_schema_version": { "const": "mplus-plan-artifact/v2" },
+    "brief_facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fact_id", "field", "value", "required", "status", "evidence_type", "source_ref"]
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["event_id", "order", "title", "fact_status", "brief_evidence"]
+      }
+    },
+    "event_graph": {
+      "type": "object",
+      "required": ["graph_type"]
+    },
+    "duration_budget": {
+      "type": "object",
+      "required": ["target_seconds", "planned_seconds", "shot_count"]
+    },
+    "shot_plans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "shot_no",
+          "narrative_stage",
+          "primary_event_id",
+          "primary_event",
+          "event_ids",
+          "duration_seconds",
+          "brief_evidence",
+          "functional_source",
+          "functional_reference_notice",
+          "transition_reason"
+        ],
+        "properties": {
+          "event_ids": { "type": "array", "minItems": 1, "maxItems": 1 },
+          "duration_seconds": { "type": "integer", "minimum": 1 },
+          "functional_source": {
+            "type": "object",
+            "required": ["source_file", "source_sheet", "source_row"]
+          }
+        }
+      }
+    },
+    "planning_audit": {
+      "type": "object",
+      "required": ["status", "blocking_codes", "clarification_codes", "warning_codes", "findings"],
+      "properties": {
+        "status": { "enum": ["pass", "needs_clarification", "blocked"] }
+      }
+    },
+    "planning_source_status": {
+      "type": "object",
+      "required": ["source_view", "ai_spec_ready", "status"]
+    }
+  }
+}

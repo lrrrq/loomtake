@@ -1,0 +1,70 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "base_version_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Base Version Id",
+      "type": "string"
+    },
+    "candidate_task_id": {
+      "pattern": "^task_[A-Za-z0-9_-]{8,120}$",
+      "title": "Candidate Task Id",
+      "type": "string"
+    },
+    "expected_project_version": {
+      "minimum": 0,
+      "title": "Expected Project Version",
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "image_proposal_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Image Proposal Digest",
+      "type": "string"
+    },
+    "image_proposal_id": {
+      "pattern": "^task_[A-Za-z0-9_-]{8,120}$",
+      "title": "Image Proposal Id",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "target_image_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Image Id"
+    },
+    "target_shot_no": {
+      "pattern": "^[1-9][0-9]*$",
+      "title": "Target Shot No",
+      "type": "string"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "project_id",
+    "expected_project_version",
+    "base_version_id",
+    "image_proposal_id",
+    "image_proposal_digest",
+    "target_shot_no",
+    "candidate_task_id"
+  ],
+  "title": "ApplyFormalImageRevisionInput",
+  "type": "object"
+}

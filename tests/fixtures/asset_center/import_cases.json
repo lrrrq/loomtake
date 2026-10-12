@@ -1,0 +1,27 @@
+{
+  "package_id": "launch-anonymous",
+  "package_version": 3,
+  "category_id": "launch",
+  "scope": "shared",
+  "project_ids": {
+    "alpha": "project_anon_alpha",
+    "beta": "project_anon_beta"
+  },
+  "actor_ids": {
+    "requester": "actor_requester_anon",
+    "reviewer": "actor_reviewer_anon",
+    "publisher": "actor_publisher_anon"
+  },
+  "files": [
+    {
+      "filename": "anonymous-reference.png",
+      "asset_kind": "image",
+      "artifact_ref": "artifact://upload/anonymous/reference-image"
+    },
+    {
+      "filename": "anonymous-source.xlsx",
+      "asset_kind": "workbook",
+      "artifact_ref": "artifact://upload/anonymous/source-workbook"
+    }
+  ]
+}
