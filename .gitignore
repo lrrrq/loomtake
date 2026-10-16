@@ -48,9 +48,9 @@ htmlcov/
 # 临时运行目录
 dist/
 build/
+/output/
+/.playwright-cli/
 outputs/
 reports/
 data/
-/output/
-/.playwright-cli/
 /evidence/

@@ -1,0 +1,2 @@
+# Supported SDK maintenance line, isolated from the application environment.
+mcp==1.30.0

@@ -734,6 +734,32 @@ _MIGRATIONS = (
         "INSERT INTO project_image_package_source_links SELECT * FROM project_image_package_source_links_v26",
         "DROP TABLE project_image_package_source_links_v26",
     ) + formal_recovery_migration_fragment()[1:5]),
+    (28, "project-director-conversation", (
+        "ALTER TABLE agent_sessions ADD COLUMN title TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE agent_sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))",
+        "ALTER TABLE agent_sessions ADD COLUMN draft_content TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE agent_sessions ADD COLUMN selected_source_ids_json TEXT",
+        "ALTER TABLE agent_sessions ADD COLUMN metadata_revision INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE agent_sessions ADD COLUMN summary_json TEXT NOT NULL DEFAULT '{}'",
+        "CREATE INDEX agent_sessions_owner_recent ON agent_sessions(project_id, actor_id, archived, updated_at)",
+        """CREATE TABLE knowledge_project_convention_events(
+            event_id TEXT PRIMARY KEY,
+            convention_id TEXT NOT NULL,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE RESTRICT,
+            project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE RESTRICT,
+            rule_id TEXT NOT NULL REFERENCES knowledge_rules(rule_id) ON DELETE RESTRICT,
+            event_type TEXT NOT NULL CHECK(event_type IN ('created','corrected','disabled','deleted')),
+            actor_id TEXT NOT NULL REFERENCES actors(actor_id) ON DELETE RESTRICT,
+            knowledge_version INTEGER NOT NULL CHECK(knowledge_version > 0),
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX knowledge_project_convention_scope ON knowledge_project_convention_events(workspace_id,project_id,knowledge_version)",
+        "CREATE INDEX knowledge_project_convention_version ON knowledge_project_convention_events(convention_id,knowledge_version)",
+        "CREATE INDEX knowledge_project_convention_rule ON knowledge_project_convention_events(rule_id,event_type)",
+        "CREATE TRIGGER knowledge_project_convention_no_update BEFORE UPDATE ON knowledge_project_convention_events BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_RECORD'); END",
+        "CREATE TRIGGER knowledge_project_convention_no_delete BEFORE DELETE ON knowledge_project_convention_events BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_RECORD'); END",
+    )),
 )
 
 

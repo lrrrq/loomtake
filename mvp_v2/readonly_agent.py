@@ -133,7 +133,8 @@ class ReadonlyAgentService:
         timeline = []
         for task in tasks:
             for event in self.services.tasks.list_task_events(
-                auth_token, task["task_id"]
+                auth_token, task["task_id"], detail_paths=('response',),
+                latest_with_detail='response' if task['task_type'] == 'formal_image_candidates' else None,
             ):
                 response = event.get("details", {}).get("response")
                 if response:

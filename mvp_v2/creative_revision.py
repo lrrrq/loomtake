@@ -12,6 +12,7 @@ from .creative_generation import (
 )
 from .formal_brief_domain import ArtifactPayload
 from .formal_script_assistant import analyze_creative_blocks
+from .knowledge_service import KnowledgeService
 from .run_state import exclusive_lock, is_lock_held, try_exclusive_lock
 from .run_contract import sha256_json
 from .version_review_service import VersionReviewService, VersionReviewError
@@ -256,7 +257,7 @@ def apply(service, auth_token, *, workspace_id, project_id, expected_project_ver
 def propose(service, auth_token, *, workspace_id, project_id, expected_project_version,
             expected_revision, instruction, selected_block_ids, operation_key, parent_task_id=None, input_updates=None,
             answer_ids=None, agent_session_id=None, duration_target_ids=None, duration_target_seconds=None,
-            allowed_fields_by_shot=None, workbench_parent_task_id=None):
+            allowed_fields_by_shot=None, workbench_parent_task_id=None, conversation_context=None):
     repo = _repo(service, auth_token, workspace_id, project_id)
     if (not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 16000
             or not isinstance(operation_key, str) or not 8 <= len(operation_key) <= 160):
@@ -348,12 +349,17 @@ def propose(service, auth_token, *, workspace_id, project_id, expected_project_v
         frozen = (state["body"].get("generation_basis") or {}).get("context", {})
         current_brief = service.brief_adapter.service.read_current_formal(auth_token,
             workspace_id=workspace_id, project_id=project_id)
+        context = {**{key: frozen[key] for key in ("creative_standard", "effective_knowledge", "template_semantics", "template_rules", "material_bindings") if key in frozen},
+            "brief": effective_brief_values(current_brief), "current_script_summary": [shot["fields"] for shot in draft["shots"]],
+            **(conversation_context or {}),
+            "recent_conversation": [*(conversation_context or {}).get('conversation', []),
+                *([{"role": "user", "content": "本次补充：" + json.dumps(input_updates, ensure_ascii=False)}] if input_updates else [])]}
+        context = KnowledgeService(service.projects.store).project_convention_context(
+            auth_token, project_id, context=context)
         analysis = analyze_creative_blocks(instruction=instruction, blocks=draft["shots"],
             selected_block_ids=selected_block_ids, protected_block_ids=state["body"].get("assistant_protected_ids", []),
             editor_policy=service.assistant_editor_policy, allowed_fields_by_shot=allowed_fields_by_shot,
-            context={**{key: frozen[key] for key in ("creative_standard", "effective_knowledge", "template_semantics", "template_rules", "material_bindings") if key in frozen},
-                "brief": effective_brief_values(current_brief), "current_script_summary": [shot["fields"] for shot in draft["shots"]],
-                "recent_conversation": [{"role": "user", "content": "本次补充：" + json.dumps(input_updates, ensure_ascii=False)}] if input_updates else []})
+            context=context)
         if (analysis.get("type") != "rewrite_operations"
                 and not ((_is_duration_alignment(instruction) or duration_target_ids is not None)
                          and analysis.get('analysis_code') == 'script_no_changes')):

@@ -17,11 +17,11 @@ __pycache__
 *.mov
 .mplus
 data
+/output/
+/.playwright-cli/
 outputs
 runs
 reports
 方案
 各需求文档
-/output/
-/.playwright-cli/
 /evidence/

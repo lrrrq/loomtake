@@ -75,6 +75,8 @@ class FormalExecutableAgentService(ExecutableAgentService):
         self.default_images = default_images
         self.operations = operations
         self.review_workspace = review_workspace
+        from .knowledge_service import KnowledgeService
+        self.project_knowledge = KnowledgeService(services.store)
 
     def get_session(self, auth_token: str, agent_session_id: str) -> dict:
         result = super().get_session(auth_token, agent_session_id)
@@ -84,7 +86,8 @@ class FormalExecutableAgentService(ExecutableAgentService):
         for task in result.get("tasks") or []:
             if task.get("task_type") != "formal_production_advisor":
                 continue
-            events = self.services.tasks.list_task_events(auth_token, task["task_id"])
+            events = self.services.tasks.list_task_events(auth_token, task["task_id"],
+                latest_with_detail='workbench', detail_paths=('workbench.project_id', 'workbench.text_task_id', 'workbench.image_task_id'))
             data = next((event.get("details", {}).get("workbench") for event in reversed(events)
                          if event.get("details", {}).get("workbench")), None)
             if data and data.get("project_id") == project_id:
@@ -94,7 +97,8 @@ class FormalExecutableAgentService(ExecutableAgentService):
                         workbench_parents[child_id] = task["task_id"]
         for task in result.get("tasks") or []:
             if task["task_id"] not in workbench_parents and task.get('task_type') in {
-                    'formal_creative_draft', 'formal_script_revision', 'formal_image_candidates'}:
+                    'formal_creative_draft', 'formal_script_revision', 'formal_image_candidates',
+                    'formal_image_analysis', 'formal_image_creation'}:
                 from .workbench_task_recovery import parent_for_child
                 parent = parent_for_child(self.services.tasks, auth_token, task['task_id'])
                 if parent:
@@ -106,14 +110,144 @@ class FormalExecutableAgentService(ExecutableAgentService):
                 item["workbench_parent_task_id"] = workbench_parents[item["task_id"]]
             response = item.get("response") or {}
             if response.get("analysis_task_id"):
-                events = self.services.tasks.list_task_events(auth_token, item["task_id"])
+                events = self.services.tasks.list_task_events(auth_token, item["task_id"],
+                    detail_paths=('assistant_instruction',))
                 instruction = next((
                     event["details"]["assistant_instruction"] for event in reversed(events)
                     if event.get("details", {}).get("assistant_instruction")
                 ), "")
                 response = {**response, "instruction": _redact_runtime_secrets(str(instruction))}
             item["response"] = _public_formal_response(response, project_id)
+        from .director_conversation import messages
+        result['messages'] = messages(self, auth_token, agent_session_id)
+        knowledge = self.project_knowledge.list_project_conventions(auth_token, project_id, include_inactive=True)
+        result.update(project_decisions=self._public_project_conventions(
+            auth_token, agent_session_id, knowledge['conventions']), knowledge_version=knowledge['knowledge_version'],
+            history_available=True)
         return result
+
+    def list_sessions(self, auth_token, project_id, *, q='', include_archived=False):
+        return {'sessions': self.services.tasks.list_agent_sessions(auth_token, project_id,
+            q=q, include_archived=include_archived)}
+
+    def update_session(self, auth_token, agent_session_id, **changes):
+        if 'selected_source_ids' in changes and changes['selected_source_ids'] is not None:
+            current = self.director_context(auth_token, agent_session_id)
+            known = {item['id'] for item in current['context_sources']}
+            if not set(changes['selected_source_ids']) <= known:
+                raise WorkspaceServiceError('CONTEXT_SOURCE_CHANGED', '引用资料已变化，请重新读取项目依据后选择')
+        return {'session': self.services.tasks.update_agent_session(auth_token, agent_session_id, **changes)}
+
+    def director_context(self, auth_token, agent_session_id):
+        from .creative_workbench import snapshot
+        from .director_conversation import project_context
+        result = project_context(self, auth_token, agent_session_id)
+        project = self.services.projects.get_project(auth_token, result['project_id'])
+        value = snapshot(self, auth_token, project, result['stage'])
+        result['workbench_context'] = {'stage': value['stage'], 'scope': 'all', 'current_target_id': '',
+            'selected_target_ids': [], 'expected_project_version': project['project_version'],
+            'expected_revision': value['revision'],
+            'expected_progress_revision': value['images'].get('revision')
+                if isinstance(value['images'], dict) else None}
+        result['targets'] = [{key: row[key] for key in ('id', 'number', 'protected')} for row in value['targets']]
+        result['project_decisions'] = self._public_project_conventions(
+            auth_token, agent_session_id, result['project_decisions'])
+        return result
+
+    def _public_project_conventions(self, auth_token, agent_session_id, conventions):
+        """Project confirmation provenance without exposing private conversations."""
+        from .director_conversation import messages
+        from .formal_brief_domain import ArtifactPayload
+        from .formal_brief_workspace_service import FormalBriefArtifactStore
+        session = self.services.tasks.get_agent_session(auth_token, agent_session_id)
+        project = self.services.projects.get_project(auth_token, session['project_id'])
+        adapter = getattr(self.script_revision, 'brief_adapter', None)
+        artifacts = (FormalBriefArtifactStore(adapter.service.artifacts.root.parent, namespace='project-convention')
+            if adapter is not None else None)
+        readable_messages = {}
+        result = []
+        for convention in conventions:
+            sources = []
+            for ref in convention.get('evidence_refs', []):
+                source = {'kind': 'unavailable', 'label': '来源凭据暂无法读取，约定记录保留'}
+                match = re.fullmatch(r'artifact://project-convention/([0-9a-f]{64})', str(ref))
+                try:
+                    if not match or artifacts is None:
+                        sources.append(source)
+                        continue
+                    receipt = json.loads(artifacts.read(ArtifactPayload(ref, match.group(1))))
+                    if (not isinstance(receipt, dict)
+                            or receipt.get('schema') != 'mplus-project-convention-source/v1'
+                            or receipt.get('workspace_id') != project['workspace_id']
+                            or receipt.get('project_id') != project['project_id']
+                            or receipt.get('actor_id') != convention.get('approved_by_actor_id')
+                            or receipt.get('statement') != convention.get('statement')
+                            or receipt.get('explicit_confirmation') is not True):
+                        sources.append(source)
+                        continue
+                    owned = receipt['actor_id'] == session['actor_id']
+                    source = {'kind': 'confirmation',
+                        'label': '用户明确保存' if owned else '项目成员明确保存'}
+                    original = receipt.get('source_message')
+                    source_session_id = receipt.get('agent_session_id')
+                    if owned and isinstance(original, dict) and source_session_id:
+                        if source_session_id not in readable_messages:
+                            origin = self.services.tasks.get_agent_session(auth_token, source_session_id)
+                            readable_messages[source_session_id] = (
+                                {item['message_id']: item['source_ref']
+                                    for item in messages(self, auth_token, source_session_id)}
+                                if origin['project_id'] == project['project_id'] else {})
+                        message_id = original.get('message_id')
+                        if (message_id in readable_messages[source_session_id]
+                                and readable_messages[source_session_id][message_id] == original.get('source_ref')):
+                            source = {'kind': 'message', 'label': '用户从会话消息明确保存',
+                                'agent_session_id': source_session_id, 'message_id': message_id}
+                except (WorkspaceServiceError, OSError, ValueError, TypeError):
+                    # Auxiliary provenance cannot hide the shared convention or
+                    # turn a private/unreadable original into a public link.
+                    pass
+                sources.append(source)
+            result.append({**convention, 'public_sources': sources or [
+                {'kind': 'unavailable', 'label': '来源凭据暂无法读取，约定记录保留'}]})
+        return result
+
+    def save_project_convention(self, auth_token, agent_session_id, *, statement='',
+                                expected_knowledge_version, confirmed=False, convention_id='',
+                                status='', reason='', source_message_id=''):
+        from .director_conversation import messages
+        from .formal_brief_workspace_service import FormalBriefArtifactStore
+        from .identity_service import require_permission
+        session = self.services.tasks.get_agent_session(auth_token, agent_session_id)
+        project = self.services.projects.get_project(auth_token, session['project_id'])
+        scope = {key: project[key] for key in ('workspace_id', 'project_id')}
+        with self.services.store.connection() as connection:
+            require_permission(connection, auth_token, **scope, permission='knowledge.propose')
+        knowledge = self.project_knowledge
+        if status:
+            return knowledge.set_project_convention_status(auth_token, **scope,
+                convention_id=convention_id, status=status, expected_knowledge_version=expected_knowledge_version,
+                reason=reason or ('停止使用这条项目约定' if status == 'disabled' else '从可用项目约定中删除'))
+        if confirmed is not True:
+            raise WorkspaceServiceError('INVALID_INPUT', '请明确确认保存这条项目创作约定')
+        source = None
+        if source_message_id:
+            source = next((item for item in messages(self, auth_token, agent_session_id)
+                if item['message_id'] == source_message_id), None)
+            if source is None:
+                raise WorkspaceServiceError('INVALID_INPUT', '来源消息不属于当前会话')
+        adapter = getattr(self.script_revision, 'brief_adapter', None)
+        if adapter is None:
+            raise WorkspaceServiceError('FORMAL_BRIEF_ADAPTER_UNAVAILABLE', '项目依据存储尚未接入')
+        artifacts = FormalBriefArtifactStore(adapter.service.artifacts.root.parent, namespace='project-convention')
+        receipt = artifacts.write(json.dumps({'schema': 'mplus-project-convention-source/v1', **scope,
+            'actor_id': session['actor_id'], 'agent_session_id': agent_session_id, 'statement': statement,
+            'source_message': source, 'explicit_confirmation': True}, ensure_ascii=False, sort_keys=True).encode())
+        arguments = {**scope, 'statement': statement, 'evidence_refs': [receipt.ref],
+            'expected_knowledge_version': expected_knowledge_version, 'confirmed': True}
+        if convention_id:
+            return knowledge.correct_project_convention(auth_token, convention_id=convention_id,
+                reason=reason or '更正本项目创作约定', **arguments)
+        return knowledge.add_project_convention(auth_token, **arguments)
 
     def start_workbench(self, auth_token, agent_session_id, **kwargs):
         from .creative_workbench import start
@@ -134,6 +268,18 @@ class FormalExecutableAgentService(ExecutableAgentService):
     def undo_workbench(self, auth_token, task_id):
         from .creative_workbench import undo
         return undo(self, auth_token, task_id)
+
+    def resume_workbench(self, auth_token, task_id):
+        from .creative_workbench import resume
+        return resume(self, auth_token, task_id)
+
+    def cancel_workbench(self, auth_token, task_id):
+        from .creative_workbench import cancel
+        return cancel(self, auth_token, task_id)
+
+    def record_workbench_handoff(self, auth_token, task_id, **kwargs):
+        from .creative_workbench import record_handoff
+        return record_handoff(self, auth_token, task_id, **kwargs)
 
     def setup_status(self) -> dict:
         actions = self.action_readiness()
@@ -276,6 +422,7 @@ class FormalExecutableAgentService(ExecutableAgentService):
             "input_questions": [{key: question[key] for key in ("field", "label", "required_for") if key in question}
                 for question in adapter.input_questions(auth_token, **scope)],
             "conversation": self._recent_conversation(auth_token, project, agent_session_id),
+            "answered_questions": self._answered_brief_questions(auth_token, session, adapter, scope),
             "evidence_ids": [f"project:{project['project_id']}:v{project['project_version']}"]
                 + ([f"brief:{brief['brief_key']}"] if brief.get("brief_key") else []),
         }
@@ -295,10 +442,11 @@ class FormalExecutableAgentService(ExecutableAgentService):
             # confirm a plan, draft, fact or version, regardless of the response.
             response = {"type": "brief_analysis", "title": "需求分析",
                 "user_message": _redact_runtime_secrets(message),
-                "summary": decision.summary, "questions": decision.questions[:3],
+                "summary": decision.summary, "questions": decision.questions[:1],
                 "evidence_ids": decision.evidence_ids,
                 "brief_key": brief.get("brief_key", ""),
                 "project_version": project["project_version"]}
+            response['answered_question_ids'] = [item['question_id'] for item in context['answered_questions']]
             response['question_bindings'] = [
                 {'question_id': f"{task['task_id']}:{index}", 'analysis_task_id': task['task_id'],
                  'question': question, 'field': decision.question_fields[index]}
@@ -318,6 +466,37 @@ class FormalExecutableAgentService(ExecutableAgentService):
                 expected_task_version=task["task_version"], status="failed", error_code=exc.code,
                 details={"response": response})
             return self._message_result(auth_token, task, response)
+
+    def _answered_brief_questions(self, auth_token, session, adapter, scope):
+        """Project saved answer records through their original authorized bindings."""
+        base = adapter.service.latest_import_base(auth_token, **scope)
+        if base is None:
+            return []
+        records = {}
+        for extraction in base.payload_data.get('extractions', []):
+            text = '\n'.join(str(item.get('text', '')) for item in extraction.get('locations', []))
+            if not text.startswith('问答记录：'):
+                continue
+            for match in re.finditer(r'^问题编号：([^\n]+)\n问题：([^\n]+)\n(.*?)(?=^问题编号：|^本次补充：|\Z)', text, re.M | re.S):
+                question_id, question, answer_text = match.groups()
+                try:
+                    binding = self._brief_question_binding(auth_token, session, session['agent_session_id'],
+                        question_id, question_id.rsplit(':', 1)[0])
+                except WorkspaceServiceError:
+                    continue
+                if binding['question'] != question:
+                    continue
+                prefix = f"对应整理字段：{binding['field']}\n回答："
+                legacy_prefix = f"{binding['field']}："
+                if answer_text.startswith(prefix):
+                    answer = answer_text[len(prefix):].strip()
+                elif answer_text.startswith(legacy_prefix):
+                    answer = answer_text[len(legacy_prefix):].strip()
+                else:
+                    continue
+                records[question_id] = {**binding, 'answer': _redact_runtime_secrets(answer),
+                    'source_document_id': extraction['document_id']}
+        return list(records.values())
 
     def answer_brief_question(self, auth_token, agent_session_id, *, question_id="", analysis_task_id="",
                               content="", expected_project_version, answers=None, idempotency_key=""):
@@ -545,7 +724,7 @@ class FormalExecutableAgentService(ExecutableAgentService):
             )
             return self._message_result(auth_token, finished, response)
 
-        if decision.intent in {"explain_status", "explain_issue"}:
+        if decision.intent in {"discussion", "explain_status", "explain_issue"}:
             response = self._read_response(decision, context)
             task = self.services.tasks.transition_task(
                 auth_token, task_id=task["task_id"],
@@ -1307,6 +1486,25 @@ class FormalExecutableAgentService(ExecutableAgentService):
 
     def sync_task(self, auth_token: str, task_id: str) -> dict:
         """Reconcile direct Formal writes from persisted authority evidence."""
+        task = self.services.tasks.get_task(auth_token, task_id)
+        if task['task_type'] == 'formal_image_analysis':
+            project = self.services.projects.get_project(auth_token, task['project_id'])
+            return self.generation.read_image_analysis_batch(auth_token, workspace_id=project['workspace_id'],
+                project_id=task['project_id'], task_id=task_id)
+        if task['task_type'] == 'formal_image_creation':
+            project = self.services.projects.get_project(auth_token, task['project_id'])
+            result = self.generation.read_image_creation(auth_token, workspace_id=project['workspace_id'],
+                project_id=task['project_id'], task_id=task_id)
+            return {'task': self.services.tasks.get_task(auth_token, task_id),
+                'response': {'type': 'image_creation_result', **result}}
+        if task['task_type'] == 'formal_image_candidates':
+            events = self.services.tasks.list_task_events(auth_token, task_id,
+                latest_with_detail='internal_image_batch')
+            if any(event.get('details', {}).get('internal_image_batch') for event in events):
+                # Only persistent batches own this lock; single-shot lookups
+                # also use formal_image_candidates and retain their old receipt.
+                from .formal_image_batch import sync
+                return sync(self.script_revision, auth_token, task_id=task_id)
         with self._formal_task_execution(auth_token, task_id) as acquired:
             if not acquired:
                 return self._execution_response(auth_token, task_id)
@@ -1890,18 +2088,32 @@ class FormalExecutableAgentService(ExecutableAgentService):
         creative = read_section("creative", lambda: creative_reader(auth_token, **scope)) if callable(creative_reader) else {}
         if not callable(creative_reader):
             context["read_errors"].append({"section": "creative", "code": "MODULE_UNAVAILABLE"})
-        context["creative"] = {key: creative[key] for key in ("revision", "draft_revision", "protected_block_ids", "task", "task_kind", "image_references") if key in creative}
+        context["creative"] = {key: creative[key] for key in ("revision", "draft_revision", "protected_block_ids", "task", "task_kind", "image_references", "duration_status") if key in creative}
         context["creative"]["blocks"] = creative.get("blocks", [])
         context["creative"]["block_count"] = len(creative.get("blocks", [])) if creative else None
         adapter = getattr(self.script_revision, "brief_adapter", None)
         if adapter is not None:
             brief = read_section("brief", lambda: adapter.read_current_formal(auth_token, **scope))
             context["brief"] = {
+                "brief_version_id": brief.get('brief_version_id') or brief.get('brief_key'),
                 "confirmation_status": brief.get("confirmation_status"),
-                "facts": (brief.get("brief") or {}).get("facts") or [],
+                "facts": [item for item in (brief.get("brief") or {}).get("facts") or [] if not item.get('historical')],
                 "conflicts": (brief.get("brief") or {}).get("conflicts") or [],
                 "warnings": (brief.get("brief") or {}).get("warnings") or [],
             }
+            raw_brief_reader = getattr(getattr(adapter, 'service', None), 'read_current_formal', None)
+            if callable(raw_brief_reader):
+                raw_brief = read_section('reference_documents', lambda: raw_brief_reader(auth_token, **scope))
+                body = raw_brief.get('brief') or {}
+                manifest = {item['source_document_id']: item for item in (body.get('source_manifest') or {}).get('documents', [])}
+                context['reference_documents'] = [{
+                    'source_document_id': extraction['document_id'],
+                    'filename': str(manifest.get(extraction['document_id'], {}).get('relative_path', '')).replace('\\', '/').rsplit('/', 1)[-1],
+                    'content_sha256': manifest.get(extraction['document_id'], {}).get('content_sha256'),
+                    'status': extraction.get('status'), 'error': extraction.get('error'),
+                    'locations': extraction.get('locations', []),
+                    'brief_version_id': raw_brief.get('brief_version_id'),
+                } for extraction in body.get('extractions', [])]
         workspace = getattr(self.script_revision, "workspace", None)
         if workspace is not None:
             script = read_section("script", lambda: workspace.read_current(auth_token, **scope))
@@ -1918,6 +2130,14 @@ class FormalExecutableAgentService(ExecutableAgentService):
             } for shot in script.get("shots") or []]
             if script.get("shots"):
                 evidence_ids.append(f"script:{project['project_id']}:v{project['project_version']}:r{script.get('revision', 0)}")
+                method_reader = getattr(workspace, 'assistant_context', None)
+                frozen = read_section('creative_methods', lambda: method_reader(auth_token, **scope)) if callable(method_reader) else {}
+                context['creative_basis'] = {key: frozen[key] for key in
+                    ('template_semantics', 'template_rules', 'material_bindings') if key in frozen}
+        if not project.get('current_version_id') and self.script_revision is not None:
+            from .creative_workbench import snapshot
+            draft_basis = read_section('creative_methods', lambda: snapshot(self, auth_token, project, 'discussion'))
+            context['creative_basis'] = draft_basis.get('evidence') or {}
         image_workspace = getattr(self.script_revision, "image_workspace", None)
         if image_workspace is not None:
             images = read_section("images", lambda: image_workspace.read_current(
@@ -2007,27 +2227,17 @@ class FormalExecutableAgentService(ExecutableAgentService):
         session = self.services.tasks.get_agent_session(auth_token, agent_session_id)
         if session["project_id"] != project["project_id"]:
             raise WorkspaceServiceError("CROSS_PROJECT_DENIED", "会话不属于当前项目")
-        tasks = self.services.tasks.list_agent_session_tasks(auth_token, agent_session_id)[-6:]
-        history = []
-        for task in tasks:
-            events = self.services.tasks.list_task_events(auth_token, task["task_id"])
-            instruction = next((
-                event["details"].get("user_message") or event["details"].get("assistant_instruction")
-                for event in events
-                if event.get("details", {}).get("user_message") or event.get("details", {}).get("assistant_instruction")
-            ), "")
-            response = next((
-                event["details"]["response"] for event in reversed(events)
-                if isinstance(event.get("details", {}).get("response"), dict)
-            ), {})
-            if instruction:
-                history.append({"role": "user", "content": _redact_runtime_secrets(str(instruction))[:1000]})
-            if response.get("summary"):
-                history.append({
-                    "role": "assistant", "content": _redact_runtime_secrets(str(response["summary"]))[:1000],
-                    "status": task["status"],
-                })
-        return history
+        from .director_conversation import history_context
+        from .knowledge_service import KnowledgeService
+        knowledge = KnowledgeService(self.services.store).list_project_conventions(auth_token,
+            project['project_id'], include_inactive=True)
+        value = history_context(self, auth_token, agent_session_id,
+            retired=knowledge.get('inactive_statements', []))
+        summary = value['history_summary']
+        return ([{'role': 'assistant', 'content': '历史索引（原消息仍可回读）：' +
+            json.dumps(summary, ensure_ascii=False), 'source_message_ids': list(dict.fromkeys(
+                identity for item in summary for identity in item['source_message_ids']))}] if summary else []) + \
+            value['history_readback'] + value['conversation']
 
     @staticmethod
     def _read_response(decision: FormalAdvisorDecision, context: dict) -> dict:
@@ -2036,6 +2246,8 @@ class FormalExecutableAgentService(ExecutableAgentService):
             "type": "formal_status" if decision.intent == "explain_status" else "formal_issue_explanation",
             "title": "Formal 项目状态" if decision.intent == "explain_status" else "Formal 问题说明",
             "summary": decision.summary,
+            "content": decision.content or decision.summary,
+            "choices": [item.model_dump() for item in decision.choices],
             "evidence_ids": decision.evidence_ids,
             "plan_status": (plan.get("audit") or {}).get("status"),
             "project": context.get("project") or {},

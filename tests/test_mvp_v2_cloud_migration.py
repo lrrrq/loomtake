@@ -34,6 +34,132 @@ def _sha(path: Path) -> str:
 
 
 class CloudMigrationTests(unittest.TestCase):
+    def test_snapshot_preserves_package_timestamps_and_immutable_registry_binding(self):
+        from mvp_v2.package_registry import LocalPackageRegistry
+        from tests.test_mvp_v2_package_registry import PackageRegistryTests
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._data_fixture(root)
+            data = fixture["data_root"].resolve()
+            package_root = data / "real-package"
+            package_root.mkdir()
+            package = PackageRegistryTests("runTest")._package(package_root)
+            registry = LocalPackageRegistry(data / "registry.json")
+            original = registry.register(package)
+            registry.promote("launch", original["package_id"], original["package_version"])
+            before = registry.list()
+            archive = root / "snapshot.zip"
+            create_cloud_snapshot(data, archive, source_root=fixture["source_root"],
+                asset_packages=(package,), source_commit=SOURCE_COMMIT)
+            data.rename(root / "offline-original")
+            restored = root / "restored"
+            restore_cloud_snapshot(archive, restored, source_commit=SOURCE_COMMIT)
+            recovered = LocalPackageRegistry(restored / "registry.json")
+            relocated = recovered.register(restored / package.relative_to(data))
+            self.assertEqual(relocated["package_sha256"], original["package_sha256"])
+            self.assertEqual(recovered.list()["aliases"], before["aliases"])
+            self.assertEqual(recovered.resolve_formal("launch")["package_sha256"], original["package_sha256"])
+            with ZipFile(archive) as bundle:
+                manifest = json.loads(bundle.read("migration-manifest.json"))
+            self.assertEqual(manifest["schema_version"], "mplus-cloud-data-snapshot/v2")
+            for record in manifest["files"]:
+                # Opening SQLite may change its timestamp; immutable files must
+                # retain exact nanoseconds, beyond ZIP's two-second precision.
+                if record["path"] != "workspace.sqlite3":
+                    path = restored / record["path"]
+                    if record["path"] != "registry.json":
+                        self.assertEqual(path.stat().st_mtime_ns, record["mtime_ns"], record["path"])
+
+            # The same frozen package must also recover from an actual v1
+            # archive, which has no per-file nanosecond timestamp records.
+            with ZipFile(archive) as bundle:
+                members = {name: bundle.read(name) for name in bundle.namelist()}
+            manifest["schema_version"] = "mplus-cloud-data-snapshot/v1"
+            for record in manifest["files"]:
+                record.pop("mtime_ns")
+            legacy = root / "legacy-package.zip"
+            with ZipFile(legacy, "w") as bundle:
+                for name, content in members.items():
+                    bundle.writestr(name, json.dumps(manifest).encode() if name == "migration-manifest.json" else content)
+            legacy_root = root / "legacy-restored"
+            result = restore_cloud_snapshot(legacy, legacy_root, source_commit=SOURCE_COMMIT)
+            self.assertEqual(result["legacy_package_metadata"]["warnings"], [])
+            self.assertTrue(result["legacy_package_metadata"]["restored_sources"])
+            legacy_registry = LocalPackageRegistry(legacy_root / "registry.json")
+            legacy_registry.register(legacy_root / package.relative_to(data))
+            self.assertEqual(legacy_registry.resolve_formal("launch")["package_sha256"], original["package_sha256"])
+            self.assertEqual(legacy_registry.list()["aliases"], before["aliases"])
+
+    def test_legacy_package_timestamp_recovery_does_not_guess_or_write_external_files(self):
+        from mvp_v2.cloud_migration import _restore_legacy_package_timestamps
+        from tests.test_mvp_v2_package_registry import PackageRegistryTests
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            package = PackageRegistryTests("runTest")._package(root)
+            payload = json.loads(package.read_text())
+            source = package.parent / payload["source_root"] / payload["source_workbook"]
+            original_timestamp = source.stat().st_mtime_ns
+            relative = source.relative_to(root).as_posix()
+            manifest = {"asset_packages_relative": [package.relative_to(root).as_posix()],
+                "files": [{"path": relative, "sha256": _sha(source), "size_bytes": source.stat().st_size}]}
+            altered = {**payload, "source_workbook_sha256": "0" * 64}
+            package.write_text(json.dumps(altered))
+            result = _restore_legacy_package_timestamps(root, manifest)
+            self.assertEqual(result["restored_sources"], [])
+            self.assertEqual(len(result["warnings"]), 1)
+            self.assertEqual(source.stat().st_mtime_ns, original_timestamp)
+            # A valid hash is not authorization to touch an out-of-snapshot
+            # workbook pointed at by a package's absolute path.
+            outside = root.parent / (root.name + "-outside.xlsx")
+            outside.write_bytes(source.read_bytes())
+            self.addCleanup(outside.unlink)
+            external_time = outside.stat().st_mtime_ns
+            altered = {**payload, "source_root": str(outside.parent), "source_workbook": outside.name}
+            package.write_text(json.dumps(altered))
+            result = _restore_legacy_package_timestamps(root, manifest)
+            self.assertEqual(result["restored_sources"], [])
+            self.assertEqual(len(result["warnings"]), 1)
+            self.assertEqual(outside.stat().st_mtime_ns, external_time)
+            package.write_text(json.dumps(payload))
+            duplicate = package.parent / "other-frozen-package.json"
+            duplicate.write_text(json.dumps({**payload, "source_root": str(source.parent),
+                "source_workbook": source.name, "source_workbook_mtime_ns": original_timestamp + 1}))
+            manifest["asset_packages_relative"].append(duplicate.relative_to(root).as_posix())
+            result = _restore_legacy_package_timestamps(root, manifest)
+            self.assertEqual(result["restored_sources"], [])
+            self.assertEqual(len(result["warnings"]), 1)
+            self.assertIn("冲突", result["warnings"][0]["reason"])
+            self.assertEqual(source.stat().st_mtime_ns, original_timestamp)
+
+    def test_legacy_v1_snapshot_still_restores_and_invalid_v2_timestamp_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._data_fixture(root)
+            archive = root / "current.zip"
+            create_cloud_snapshot(fixture["data_root"], archive, source_root=fixture["source_root"],
+                source_commit=SOURCE_COMMIT)
+            with ZipFile(archive) as bundle:
+                members = {name: bundle.read(name) for name in bundle.namelist()}
+            original = json.loads(members["migration-manifest.json"])
+            for label, timestamp in (("bool", True), ("negative", -1), ("overflow", 2**64)):
+                manifest = json.loads(json.dumps(original))
+                manifest["files"][0]["mtime_ns"] = timestamp
+                invalid = root / (label + ".zip")
+                with ZipFile(invalid, "w") as bundle:
+                    for name, content in members.items():
+                        bundle.writestr(name, json.dumps(manifest).encode() if name == "migration-manifest.json" else content)
+                with self.assertRaisesRegex(CloudMigrationError, "文件修改时间"):
+                    restore_cloud_snapshot(invalid, root / label, source_commit=SOURCE_COMMIT)
+                self.assertFalse((root / label).exists())
+            original["schema_version"] = "mplus-cloud-data-snapshot/v1"
+            for record in original["files"]:
+                record.pop("mtime_ns")
+            legacy = root / "legacy.zip"
+            with ZipFile(legacy, "w") as bundle:
+                for name, content in members.items():
+                    bundle.writestr(name, json.dumps(original).encode() if name == "migration-manifest.json" else content)
+            self.assertEqual(restore_cloud_snapshot(legacy, root / "legacy", source_commit=SOURCE_COMMIT)["status"], "restored")
+
     def _data_fixture(self, root: Path) -> dict:
         data_root = root / "old-machine" / "data"
         source_root = data_root / "sources"

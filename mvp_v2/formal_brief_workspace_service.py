@@ -46,7 +46,7 @@ class FormalBriefArtifactStore:
     """Content-addressed payload storage; DB rows remain the only Brief authority."""
 
     def __init__(self, root: str | Path, *, namespace: str = "formal-brief"):
-        if namespace not in {"formal-brief", "creative-draft", "creative-image"}:
+        if namespace not in {"formal-brief", "creative-draft", "creative-image", "project-convention"}:
             raise ValueError("Unsupported payload namespace")
         self.namespace = namespace
         self.root = Path(root).expanduser().resolve() / f"{namespace}-payloads"

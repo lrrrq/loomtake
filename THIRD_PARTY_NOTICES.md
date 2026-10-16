@@ -67,3 +67,7 @@
 Psycopg/psycopg-binary 为 LGPL，certifi 为 MPL；本仓库没有复制或修改这些库，其原有授权继续独立适用。若后续分发安装包、镜像、浏览器、字体或修改后的第三方代码，必须另行检查该分发形式的义务。本次不构成完整的法律兼容性认证。
 
 Windows/时区条件依赖 colorama、tzdata 未在当前 macOS 环境安装，仅保留锁定引用，没有打包它们的内容。Dockerfile 引用的系统工具及镜像亦未被本次复制或分发；本次未构建镜像。
+
+## 可选工程读取 MCP
+
+独立工具通过 `scripts/mplus_mcp/requirements.in` 与哈希锁定文件引用 `mcp==1.30.0`，不捆绑 SDK 或依赖源码。该 SDK 使用 MIT 许可，版权声明为 Copyright (c) 2024 Anthropic, PBC，见 [SDK 原许可证](https://github.com/modelcontextprotocol/python-sdk/blob/v1.x/LICENSE)。此第三方授权不构成对 Loomtake 原项目的一般使用许可。官方 tunnel-client 需由维护者另行获取并遵守其许可，本仓库不分发其二进制；本次没有建立隧道、连接账号或调用模型。

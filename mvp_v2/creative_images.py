@@ -401,10 +401,63 @@ def _provider_receipt(service, events):
     return json.loads(_metadata_store(service).read(ArtifactPayload(**reference))) if reference else None
 
 
+def _workbench_session(service, auth_token, state, workspace_id, project_id, binding, target_kind, target_id):
+    tasks = service.services.tasks
+    parent = tasks.get_task(auth_token, binding['workbench_parent_task_id'])
+    if (parent['project_id'] != project_id or parent['actor_id'] != state['actor_id']
+            or parent['task_type'] != 'formal_production_advisor'):
+        raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '图片请求与当前创作会话不一致，请重新核对')
+    details = next((event['details'] for event in reversed(tasks.list_task_events(auth_token, parent['task_id']))
+                    if event['details'].get('workbench')), {})
+    data, response = details.get('workbench', {}), details.get('response', {})
+    matches = [item for item in response.get('image_creation_requests', [])
+               if item.get('action_index') == binding['workbench_action_index']
+               and item.get('target_kind') == target_kind and item.get('target_id') == target_id
+               and item.get('task_id') == parent['task_id']
+               and item.get('workspace_id') == workspace_id and item.get('project_id') == project_id]
+    if (data.get('workspace_id') != workspace_id or data.get('project_id') != project_id
+            or data.get('undone') or response.get('undone') or len(matches) != 1):
+        raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '原建议没有这项待生成图片，或已经撤销，请重新核对')
+    return parent['agent_session_id']
+
+
+def _adoption_receipts(service, auth_token, workspace_id, project_id, task, request, events):
+    receipts = [deepcopy(event['details']['image_adoption']) for event in events
+                if event['details'].get('image_adoption')]
+    if not receipts:
+        return []
+    state = _scope(service, auth_token, workspace_id, project_id)
+    target = (request or {}).get('target', {})
+    progress = (service.creative_revision.image_workspace.read_progress(auth_token,
+        workspace_id=workspace_id, project_id=project_id)
+        if target.get('kind') == 'formal_shot' and state.get('current_version_id') else {})
+    rows = {row['shot_id']: row for row in (state['body'].get('draft') or {}).get('shots', [])}
+    for receipt in receipts:
+        receipt['currently_applied'] = False
+        if receipt['status'] == 'reference_saved' and not state.get('current_version_id'):
+            receipt['currently_applied'] = any(
+                ref.get('task_id') == task['task_id'] and ref.get('block_id') == target.get('id')
+                and ref.get('content_sha256') == receipt['image_sha256'] and ref.get('primary', True)
+                and ref.get('target_fields_sha256') == sha256_json(rows.get(target.get('id'), {}).get('fields', {}))
+                for ref in state['body'].get('image_references', []))
+        elif receipt['status'] == 'progress_saved':
+            receipt['currently_applied'] = (receipt.get('base_version_id') == progress.get('base_version_id')
+                and any(item.get('shot_id') == target.get('id') and item.get('image_key') == receipt['image_key']
+                        and item.get('selection_active', True) and not item.get('unavailable')
+                        for item in progress.get('selections', [])))
+    return [{**{key: receipt[key] for key in ('task_id', 'operation_key', 'status', 'target',
+                    'image_key', 'image_sha256', 'selection_pending', 'currently_applied')},
+             **{key: receipt['response'][key] for key in ('project_version', 'progress_revision', 'message')
+                if key in receipt['response']}} for receipt in receipts]
+
+
 def read(service, auth_token, *, workspace_id, project_id, task_id):
     _scope(service, auth_token, workspace_id, project_id)
     task, request, events = _task_request(service, auth_token, workspace_id, project_id, task_id)
     running = is_lock_held(creative_lock_path(service.services.projects.store, task_id))
+    if not running:
+        # A worker may finish between the first task read and the lock check.
+        task, request, events = _task_request(service, auth_token, workspace_id, project_id, task_id)
     has_receipt = any(e['details'].get('image_provider_receipt') for e in events)
     age = (datetime.now(timezone.utc) - datetime.fromisoformat(task['updated_at'].replace('Z', '+00:00'))).total_seconds()
     if not running and (task['status'] == 'executing' or task['status'] in {'received', 'understanding'} and age > 10):
@@ -436,6 +489,9 @@ def read(service, auth_token, *, workspace_id, project_id, task_id):
         'result_uncertain': any(e['details'].get('result_uncertain') for e in events),
         'download_pending': task['status'] == 'waiting_user' and has_receipt,
         'error_message': ''}
+    result.update({key: request[key] for key in ('workbench_parent_task_id', 'workbench_action_index')
+                   if request and key in request})
+    result['adoption_receipts'] = _adoption_receipts(service, auth_token, workspace_id, project_id, task, request, events)
     if result['download_pending']:
         result['error_message'] = '服务已生成图片，下载暂未完成。重新读取会恢复原图下载，不会再次付费生成。'
     if task['status'] == 'failed':
@@ -499,7 +555,7 @@ def start(service, auth_token, *, workspace_id, project_id, expected_project_ver
           target_kind, target_id, prompt, operation_key, expected_creative_revision=None,
           expected_script_revision=None, expected_target_basis=None, purpose=None,
           reference_image_ids=None, reference_task_ids=None, reference_uploads=(), start_background=True,
-          expected_prompt_sha256=None):
+          expected_prompt_sha256=None, workbench_task_id=None, workbench_action_index=None):
     _scope(service, auth_token, workspace_id, project_id, write=True)
     if service.image_provider is None or not service.creative_writes_enabled:
         raise WorkspaceServiceError('IMAGE_PROVIDER_UNAVAILABLE', '图片生成账号尚未配置，文字创作与现有图库仍可使用')
@@ -516,11 +572,18 @@ def start(service, auth_token, *, workspace_id, project_id, expected_project_ver
         raise WorkspaceServiceError('IMAGE_INPUT_INVALID', '最多选择 14 张不重复参考图片')
     if sum(len(content) for _, content in reference_uploads) > MAX_IMAGE_BYTES:
         raise WorkspaceServiceError('IMAGE_INPUT_INVALID', '参考图片合计超过本地大小限制')
+    binding = {}
+    if workbench_task_id is not None or workbench_action_index is not None:
+        if (not isinstance(workbench_task_id, str) or not 8 <= len(workbench_task_id) <= 160
+                or type(workbench_action_index) is not int or workbench_action_index < 0):
+            raise WorkspaceServiceError('IMAGE_INPUT_INVALID', '创作会话和动作标识必须完整有效')
+        binding = {'workbench_parent_task_id': workbench_task_id, 'workbench_action_index': workbench_action_index}
     request_sha = sha256_json({'project_id': project_id, 'project_version': expected_project_version,
         'creative_revision': expected_creative_revision, 'target_kind': target_kind, 'target_id': target_id,
         'script_revision': expected_script_revision, 'target_basis': expected_target_basis, 'purpose': purpose,
         'prompt': prompt, 'operation_key': operation_key, 'image_ids': image_ids, 'task_ids': task_ids,
         **({'prepared_prompt_sha256': expected_prompt_sha256} if expected_prompt_sha256 is not None else {}),
+        **binding,
         'uploads': [{'label': Path(name).name, 'sha256': sha256(content).hexdigest()} for name, content in reference_uploads]})
     repo = repository(service, auth_token, workspace_id, project_id)
     with try_exclusive_lock(creative_lock_path(service.services.projects.store, project_id + ':image-start'), run_id=operation_key) as acquired:
@@ -537,6 +600,8 @@ def start(service, auth_token, *, workspace_id, project_id, expected_project_ver
             if receipt['request_sha256'] != request_sha:
                 raise WorkspaceServiceError('IDEMPOTENCY_CONFLICT', '同一图片请求不能改为其他内容')
             return read(service, auth_token, workspace_id=workspace_id, project_id=project_id, task_id=receipt['task_id'])
+        session_id = (_workbench_session(service, auth_token, state, workspace_id, project_id, binding, target_kind, target_id)
+                      if binding else None)
         state, target, fields, formal = _target(service, auth_token, workspace_id=workspace_id, project_id=project_id, target_kind=target_kind, target_id=target_id)
         if state['project_version'] != expected_project_version or (target_kind == 'creative_block' and state['revision'] != expected_creative_revision):
             raise WorkspaceServiceError('DRAFT_REVISION_CONFLICT', '项目或初稿已变化，请核对当前内容后生成')
@@ -571,18 +636,18 @@ def start(service, auth_token, *, workspace_id, project_id, expected_project_ver
             evidence, _, _, _ = _freeze_image(service, content)
             refs.append({'kind': 'uploaded_reference', 'label': Path(filename).name[:120], 'image': evidence})
         params = {'workspace_id': workspace_id, 'project_id': project_id, 'prompt': prompt,
-            'operation_key': operation_key,
+            'operation_key': operation_key, **binding,
             'purpose': selected_purpose, 'requested_model': settings['model'], 'requested_size': settings['size'],
             'script_revision': formal['revision'] if formal else None,
             'target': target, 'target_fields_sha256': sha256_json(fields), 'target_fields': fields,
             'prepared_prompt': deepcopy(prepared) if expected_prompt_sha256 is not None else {'status': 'not_recorded'},
             'references': refs, 'expected_project_version': expected_project_version}
         tasks = service.services.tasks
-        session = tasks.create_agent_session(auth_token, project_id=project_id)
-        task = tasks.create_task(auth_token, agent_session_id=session['agent_session_id'], task_type='formal_image_creation',
+        session_id = session_id or tasks.create_agent_session(auth_token, project_id=project_id)['agent_session_id']
+        task = tasks.create_task(auth_token, agent_session_id=session_id, task_type='formal_image_creation',
             payload_sha256=request_sha, expected_project_version=expected_project_version, reuse_payload=True)
         task = tasks.append_task_event(auth_token, task_id=task['task_id'], expected_task_version=task['task_version'],
-            status='understanding', details={'image_request': params})
+            status='understanding', details={'image_request': params, **binding})
         if start_background:
             ready = threading.Event()
             threading.Thread(target=execute, args=(service, auth_token), kwargs={'workspace_id':workspace_id, 'project_id':project_id, 'task_id':task['task_id'], 'ready':ready}, daemon=True).start()
@@ -681,6 +746,66 @@ def adopt(service, auth_token, *, workspace_id, project_id, task_id, target_kind
           expected_project_version, operation_key, expected_creative_revision=None,
           expected_progress_revision=None, expected_script_revision=None, acknowledged_target_basis=None,
           defer_selection=False):
+    kwargs = dict(workspace_id=workspace_id, project_id=project_id, task_id=task_id,
+        target_kind=target_kind, target_id=target_id, expected_project_version=expected_project_version,
+        operation_key=operation_key, expected_creative_revision=expected_creative_revision,
+        expected_progress_revision=expected_progress_revision, expected_script_revision=expected_script_revision,
+        acknowledged_target_basis=acknowledged_target_basis, defer_selection=defer_selection)
+    task, request, _ = _task_request(service, auth_token, workspace_id, project_id, task_id)
+    if not (request or {}).get('workbench_parent_task_id'):
+        return _adopt(service, auth_token, **kwargs)
+    _scope(service, auth_token, workspace_id, project_id, write=True)
+    digest = sha256_json(kwargs)
+    pending = None
+    # Domain writes and their task annotation commit together. The annotation
+    # references existing authority receipts; it never creates an adoption.
+    with service.services.projects.store.atomic():
+        task, _, events = _task_request(service, auth_token, workspace_id, project_id, task_id)
+        old = next((e['details']['image_adoption'] for e in reversed(events)
+                    if e['details'].get('image_adoption', {}).get('operation_key') == operation_key), None)
+        if old:
+            if old['request_sha256'] != digest:
+                raise WorkspaceServiceError('IDEMPOTENCY_CONFLICT', '采用请求已用于其他内容')
+            if not old.get('selection_pending'):
+                return deepcopy(old['response'])
+        try:
+            response = _adopt(service, auth_token, **kwargs)
+        except WorkspaceServiceError as exc:
+            if exc.code != 'IMAGE_ADOPTION_PROGRESS_PENDING':
+                raise
+            if old:
+                raise
+            pending = exc
+            response = {'status': 'pool_saved', 'project_version': expected_project_version, 'message': exc.message}
+        _, _, metadata, _ = load_result(service, auth_token, workspace_id=workspace_id, project_id=project_id, task_id=task_id)
+        with service.services.projects.store.connection() as connection:
+            source = connection.execute('SELECT project_image_id, result_ref, result_sha256 FROM project_image_generated_sources WHERE task_id=?',
+                (task_id,)).fetchone()
+        image_key = source['project_image_id'] if source else None
+        if response['status'] == 'reference_saved':
+            authority = {'kind': 'creative_reference', 'receipt_key': sha256_json({'actor': task['actor_id'], 'operation_key': operation_key})}
+        elif response['status'] == 'progress_saved':
+            authority = {'kind': 'formal_image_progress', 'idempotency_key': 'generated-image:' + operation_key}
+        else:
+            authority = {'kind': 'project_image_pool', 'task_id': task_id}
+        annotation = {'task_id': task_id, 'operation_key': operation_key, 'request_sha256': digest,
+            'status': response['status'], 'target': deepcopy(request['target']), 'image_key': image_key,
+            'image_sha256': metadata['image']['sha256'], 'result_ref': task['result_ref'],
+            'authority': authority, 'response': deepcopy(response), 'selection_pending': bool(pending)}
+        if response['status'] == 'progress_saved':
+            annotation['base_version_id'] = service.services.projects.get_project(auth_token, project_id)['current_version_id']
+        service.services.tasks.record_task_progress(auth_token, task_id=task_id,
+            expected_task_version=task['task_version'], result_annotation=True,
+            details={'image_adoption': annotation})
+    if pending:
+        raise pending
+    return response
+
+
+def _adopt(service, auth_token, *, workspace_id, project_id, task_id, target_kind, target_id,
+           expected_project_version, operation_key, expected_creative_revision=None,
+           expected_progress_revision=None, expected_script_revision=None, acknowledged_target_basis=None,
+           defer_selection=False):
     state = _scope(service, auth_token, workspace_id, project_id, write=True)
     _, request, metadata, _ = load_result(service, auth_token, workspace_id=workspace_id, project_id=project_id, task_id=task_id)
     if (request['target']['kind'], request['target']['id']) != (target_kind, target_id):
@@ -753,7 +878,7 @@ def adopt(service, auth_token, *, workspace_id, project_id, task_id, target_kind
         raise WorkspaceServiceError('IMAGE_ADOPTION_PROGRESS_PENDING',
             '图片已进入项目素材；选图进度已变化或未能保存，请核对当前稿后再次采用，原图和结果均保留。') from exc
     return {'status':'progress_saved', 'message':'已进入项目素材并保存为本镜待核对选图，请完成图片分析与配图确认。', 'project_version':expected_project_version,
-            'progress_revision':progress['revision']}
+            'progress_revision':progress['revision'], 'image_key':image_id}
 
 
 def register_reference(service, auth_token, *, workspace_id, project_id, task_id,

@@ -1182,94 +1182,23 @@ class FormalGenerationService:
         self, auth_token: str, *, workspace_id: str, project_id: str,
         expected_project_version: int,
     ) -> dict:
-        """Analyze one bounded server-side batch; existing results are never re-called."""
-        policy = self.vision_provider_policy
-        if not isinstance(policy, FormalVisionProviderPolicy):
-            raise FormalGenerationBlocked(
-                "FORMAL_VISION_PROVIDER_UNAVAILABLE",
-                "图片自动理解服务尚未配置，可继续人工处理。",
-            )
-        before = self._current_plan_state(
-            auth_token, workspace_id, project_id, expected_project_version,
-        )
-        paired = self._resolve_current_paired(auth_token, workspace_id, project_id)
-        readiness = self._synchronize_and_resolve_images(
-            auth_token, workspace_id=workspace_id, project_id=project_id,
-            paired=paired, expected_project_version=expected_project_version,
-        )
-        assert isinstance(self.services.images, ProjectImagePoolService)
-        pending_pool = self.services.images.resolve_pending_for_provider(
-            auth_token,
-            workspace_id=workspace_id,
-            project_id=project_id,
-            brief_version_id=paired.brief.brief_version_id,
-            brief_snapshot_id=paired.brief.brief_snapshot_id,
-            expected_project_lock_version=expected_project_version,
-        )
-        processed = 0
-        provider_failures = 0
-        command = ProviderProjectImageAnalysisCommandService(self.services.images)
-        for asset in pending_pool.assets[:policy.max_batch_size]:
-            try:
-                result = policy.invoke(asset.controlled_path)
-                if not isinstance(result, ProjectImageVisionResult):
-                    raise TypeError("图片 Provider 必须返回 ProjectImageVisionResult")
-                command.record_analysis(
-                    auth_token,
-                    workspace_id=workspace_id,
-                    project_id=project_id,
-                    expected_project_lock_version=expected_project_version,
-                    submission=ProviderImageAnalysisInput(
-                        image_id=asset.image_id,
-                        image_sha256=asset.image_sha256,
-                        brief_version_id=paired.brief.brief_version_id,
-                        brief_snapshot_id=paired.brief.brief_snapshot_id,
-                        status=result.status,
-                        caption=result.caption,
-                        tags=result.tags,
-                        subjects=result.subjects,
-                        scene=result.scene,
-                        purpose=result.purpose,
-                        quality=result.quality,
-                        brand=result.brand,
-                        evidence=result.evidence,
-                        provider=policy.provider,
-                        model=policy.model,
-                        prompt_version=policy.prompt_version,
-                        quality_flags=result.quality_flags,
-                        negative_flags=result.negative_flags,
-                        visual_observations=getattr(result, "visual_observations", {}),
-                    ),
-                )
-                processed += 1
-            except WorkspaceServiceError:
-                raise
-            except Exception:
-                provider_failures += 1
-        if pending_pool.assets and processed == 0:
-            raise FormalGenerationBlocked(
-                "FORMAL_VISION_PROVIDER_FAILED",
-                "自动图片理解未完成，原图仍保持待处理，请重试或改为人工理解。",
-            )
-        self._require_same_current_pair(auth_token, workspace_id, project_id, paired)
-        if self._current_plan_state(
-            auth_token, workspace_id, project_id, expected_project_version,
-        ) != before:
-            raise FormalGenerationBlocked(
-                "PROJECT_STATE_CHANGED", "图片理解期间项目状态已变化",
-            )
-        current = self._resolve_images(
-            auth_token, workspace_id=workspace_id, project_id=project_id,
-            paired=paired, expected_project_version=expected_project_version,
-        )
-        response = self.services.images.employee_readiness(current)
-        response["automatic_understanding"] = {
-            "processed": processed,
-            "remaining": current.pending,
-            "needs_review": current.low_confidence + current.blocked + current.failed,
-            "failed": provider_failures,
-            "has_more": current.pending > 0,
+        """Compatibility entrypoint delegates to the same durable batch authority."""
+        from uuid import uuid4
+        result = self.start_image_analysis_batch(auth_token, workspace_id=workspace_id,
+            project_id=project_id, expected_project_version=expected_project_version,
+            idempotency_key='legacy-image-analysis-' + uuid4().hex)
+        if result['task']['status'] == 'executing':
+            result = self.execute_image_analysis_batch(auth_token, task_id=result['task']['task_id'])
+        project = self.services.projects.get_project(auth_token, project_id)
+        response = self.get_image_readiness(auth_token, workspace_id=workspace_id,
+            project_id=project_id, expected_project_version=project['project_version'])
+        progress = result['response']['progress']
+        response['automatic_understanding'] = {
+            'processed': progress['processed'], 'remaining': response['pending'],
+            'needs_review': progress['needs_review'], 'failed': progress['failed'],
+            'has_more': response['pending'] > 0, 'task_id': result['task']['task_id'],
         }
+        response['analysis_batch'] = result['response']
         return response
 
     def confirm_image_analyses(
@@ -2973,3 +2902,112 @@ class FormalGenerationService:
             return FormalGenerationBlocked("BRIEF_DURATION_INVALID", message)
         code = str(getattr(exc, "code", "FORMAL_GENERATION_BLOCKED"))
         return FormalGenerationBlocked(code, message)
+
+    def completed_plan_result(self, auth_token: str, *, workspace_id: str,
+                              project_id: str, version_id: str, completed_after: str) -> dict | None:
+        """Read a durable generation receipt, never infer one from a saved edit."""
+        project = self.services.projects.get_project(auth_token, project_id)
+        if project['workspace_id'] != workspace_id:
+            raise FormalGenerationBlocked('CROSS_PROJECT_DENIED', '规划结果不属于当前工作区')
+        from .identity_service import require_permission
+        with self.services.projects.store.connection() as connection:
+            actor = require_permission(connection, auth_token, workspace_id=workspace_id,
+                                       project_id=project_id, permission='task.read')
+            rows = connection.execute("""SELECT t.task_id, e.details_json, v.run_id,
+                v.artifact_ref, v.content_sha256 FROM tasks t
+                JOIN task_events e ON e.task_id=t.task_id
+                JOIN project_versions v ON v.version_id=json_extract(e.details_json, '$.version_id')
+                  AND v.project_id=t.project_id
+                WHERE t.project_id=? AND t.actor_id=? AND t.task_type='formal_generation_plan'
+                  AND t.status='completed' AND e.status='completed' AND v.version_id=?
+                  AND e.created_at>=? AND v.created_at>=?
+                  AND json_extract(e.details_json, '$.action')='generate_from_confirmed_plan'
+                ORDER BY e.created_at DESC, e.sequence_no DESC""",
+                (project_id, actor['actor_id'], version_id, completed_after, completed_after)).fetchall()
+        for row in rows:
+            self._require_plan_task(auth_token, project_id, row['task_id'])
+            plan = self._plan_event(auth_token, row['task_id'])
+            receipt = json.loads(row['details_json'])
+            manifest = self.services.artifacts.resolve_manifest(row['run_id'])
+            workbook = self.services.artifacts.resolve_artifact(row['run_id'], 'workbook')
+            artifact = self.services.artifacts.resolve_stage_artifact(
+                self._run_id_from_ref(plan['plan_ref']), 'script_plan')
+            if (any(receipt.get(key) != plan.get(key) for key in ('plan_ref', 'plan_sha256'))
+                    or artifact.sha256 != plan['plan_sha256'] or receipt.get('run_id') != row['run_id']
+                    or (receipt.get('manifest_ref'), receipt.get('manifest_sha256')) != (manifest.ref, manifest.sha256)
+                    or (row['artifact_ref'], row['content_sha256']) != (workbook.ref, workbook.sha256)):
+                raise FormalGenerationBlocked('PLAN_ARTIFACT_DRIFT', '规划生成回执与冻结版本不一致，请核对原任务')
+            return {'status': 'completed', 'plan_id': row['task_id'], 'version_id': version_id,
+                    'plan_sha256': plan['plan_sha256'],
+                    'brief_version_id': receipt.get('creative_standard_brief_version_id')}
+        # Successful retries preserve the original failed task. Their authority
+        # is the executor checkpoint and the generated run's explicit attempt.
+        version = self.services.projects.get_project_version(auth_token, version_id)
+        if version['project_id'] != project_id or version['created_at'] < completed_after:
+            return None
+        manifest = self.services.artifacts.read_manifest(version['run_id'])
+        attempt_id = (manifest.get('run_provenance') or {}).get('recovery_attempt_id')
+        if not attempt_id:
+            return None
+        with self.services.projects.store.connection() as connection:
+            recovery = connection.execute("""SELECT p.task_id FROM recovery_executions e
+                JOIN recovery_proposals p ON p.recovery_proposal_id=e.recovery_proposal_id
+                WHERE e.new_attempt_id=? AND p.project_id=? AND p.workspace_id=?
+                  AND e.confirmed_by_actor_id=? AND p.requested_stage_id='formal_generation_plan'""",
+                (attempt_id, project_id, workspace_id, actor['actor_id'])).fetchone()
+        if recovery is None:
+            return None
+        from .formal_recovery_executor import FormalRecoveryExecutor
+        terminal = FormalRecoveryExecutor(self.services.projects.store, handlers={}).terminal_for_attempt(attempt_id)
+        workbook = self.services.artifacts.resolve_artifact(version['run_id'], 'workbook')
+        if (not terminal or terminal['status'] != 'succeeded'
+                or terminal['stage_id'] != 'formal_generation_plan' or terminal['created_at'] < completed_after
+                or terminal['output_ref'] != workbook.ref):
+            return None
+        self._require_plan_task(auth_token, project_id, recovery['task_id'])
+        plan = self._plan_event(auth_token, recovery['task_id'])
+        artifact = self.services.artifacts.resolve_stage_artifact(
+            self._run_id_from_ref(plan['plan_ref']), 'script_plan')
+        if ((terminal['input_ref'], terminal['input_sha256']) != (plan['plan_ref'], plan['plan_sha256'])
+                or artifact.sha256 != plan['plan_sha256']
+                or (terminal['output_ref'], terminal['output_sha256']) != (workbook.ref, workbook.sha256)
+                or (version['artifact_ref'], version['content_sha256']) != (workbook.ref, workbook.sha256)):
+            raise FormalGenerationBlocked('PLAN_ARTIFACT_DRIFT', '恢复回执与冻结规划或生成版本不一致，请核对原任务')
+        return {'status': 'completed', 'plan_id': recovery['task_id'], 'version_id': version_id,
+                'plan_sha256': plan['plan_sha256'], 'recovery_attempt_id': attempt_id,
+                'brief_version_id': plan.get('creative_standard_brief_version_id')}
+
+    def execute_image_analysis_batch(self, auth_token: str, *, task_id: str) -> dict:
+        from .project_image_analysis_batch import execute
+        return execute(self, auth_token, task_id=task_id)
+
+    def pause_image_analysis_batch(self, auth_token: str, *, task_id: str) -> dict:
+        from .project_image_analysis_batch import pause
+        return pause(self, auth_token, task_id=task_id)
+
+    def read_image_analysis_batch(self, auth_token: str, **kwargs) -> dict:
+        from .project_image_analysis_batch import read
+        return read(self, auth_token, **kwargs)
+
+    def read_template_method_context(self, auth_token: str, *, workspace_id: str,
+                                     project_id: str) -> dict:
+        """Read the selected template for discussion before any draft exists."""
+        from .script_type_adapter import metadata_for_category_id
+        from .script_draft import frozen_creative_context
+        project = self._template_project(auth_token, workspace_id, project_id)
+        if not project.get('category_id'):
+            return {'template_semantics': {'status': 'not_recorded'}, 'template_rules': {}}
+        script_type = metadata_for_category_id(project['category_id']).display_name
+        path, package = self._asset_package_for(script_type, project=project)
+        rules = load_asset_package(path)['template_rule_contract'] if path else {}
+        context = frozen_creative_context({'formal_asset_package': package}, rules)
+        return {**context, 'template_ref': (package or {}).get('resolved_ref', ''),
+                'basis_kind': 'selected_template_reference'}
+
+    def resume_image_analysis_batch(self, auth_token: str, *, task_id: str) -> dict:
+        from .project_image_analysis_batch import resume
+        return resume(self, auth_token, task_id=task_id)
+
+    def start_image_analysis_batch(self, auth_token: str, **kwargs) -> dict:
+        from .project_image_analysis_batch import start
+        return start(self, auth_token, **kwargs)

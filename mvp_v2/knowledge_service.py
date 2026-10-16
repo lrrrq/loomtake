@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from copy import deepcopy
 
 import json
 
@@ -53,6 +54,229 @@ class KnowledgeService:
             "knowledge_version": version,
             "actor_id": actor["actor_id"],
         }
+
+    def add_project_convention(
+        self,
+        auth_token: str,
+        *,
+        workspace_id: str,
+        project_id: str,
+        statement: str,
+        evidence_refs: list[str],
+        expected_knowledge_version: int,
+        confirmed: bool,
+    ) -> dict:
+        """Save an explicit, shared project convention without changing the Brief.
+
+        This project-only entry point uses the existing knowledge proposal
+        permission. It cannot promote a candidate or approve company knowledge.
+        """
+        _require_convention_confirmation(confirmed)
+        statement = require_nonempty(statement, "statement")
+        evidence_refs = _evidence_refs(evidence_refs)
+        convention_id = new_id("project_convention")
+        timestamp = utc_now()
+        with self.store.transaction() as connection:
+            actor, version = _convention_write_context(
+                connection, auth_token, workspace_id, project_id,
+                expected_knowledge_version,
+            )
+            rule_id = _write_convention_rule(
+                connection, workspace_id=workspace_id, project_id=project_id,
+                statement=statement, evidence_refs=evidence_refs,
+                actor_id=actor["actor_id"], version=version + 1,
+                timestamp=timestamp, reason="项目成员明确保存项目创作约定",
+            )
+            _append_convention_event(
+                connection, convention_id=convention_id,
+                workspace_id=workspace_id, project_id=project_id, rule_id=rule_id,
+                event_type="created", actor_id=actor["actor_id"], version=version,
+                reason="项目成员明确保存项目创作约定", timestamp=timestamp,
+            )
+            result = _convention(_find_convention(
+                connection, workspace_id, project_id, convention_id,
+            ))
+        return result
+
+    def correct_project_convention(
+        self,
+        auth_token: str,
+        *,
+        workspace_id: str,
+        project_id: str,
+        convention_id: str,
+        statement: str,
+        evidence_refs: list[str],
+        expected_knowledge_version: int,
+        reason: str,
+        confirmed: bool,
+    ) -> dict:
+        """Append a correction while preserving its original evidence and audit."""
+        _require_convention_confirmation(confirmed)
+        statement = require_nonempty(statement, "statement")
+        evidence_refs = _evidence_refs(evidence_refs)
+        reason = require_nonempty(reason, "reason")
+        timestamp = utc_now()
+        with self.store.transaction() as connection:
+            actor, version = _convention_write_context(
+                connection, auth_token, workspace_id, project_id,
+                expected_knowledge_version,
+            )
+            current = _find_convention(
+                connection, workspace_id, project_id, convention_id,
+            )
+            if current["event_type"] in {"disabled", "deleted"}:
+                raise WorkspaceServiceError(
+                    "PROJECT_CONVENTION_INACTIVE",
+                    "该项目约定已停止使用；如需采用新约定，请明确新增，原审计记录保留",
+                )
+            rule_id = _write_convention_rule(
+                connection, workspace_id=workspace_id, project_id=project_id,
+                statement=statement, evidence_refs=evidence_refs,
+                actor_id=actor["actor_id"], version=version + 1,
+                timestamp=timestamp, reason=reason,
+            )
+            _append_convention_event(
+                connection, convention_id=convention_id,
+                workspace_id=workspace_id, project_id=project_id, rule_id=rule_id,
+                event_type="corrected", actor_id=actor["actor_id"], version=version,
+                reason=reason, timestamp=timestamp,
+            )
+            result = _convention(_find_convention(
+                connection, workspace_id, project_id, convention_id,
+            ))
+        return result
+
+    def set_project_convention_status(
+        self,
+        auth_token: str,
+        *,
+        workspace_id: str,
+        project_id: str,
+        convention_id: str,
+        status: str,
+        expected_knowledge_version: int,
+        reason: str,
+    ) -> dict:
+        """Stop using a convention; deletion never erases immutable audit rows."""
+        status = require_nonempty(status, "status")
+        if status not in {"disabled", "deleted"}:
+            raise WorkspaceServiceError(
+                "INVALID_INPUT", "项目约定只能停用或从今后上下文删除",
+            )
+        reason = require_nonempty(reason, "reason")
+        timestamp = utc_now()
+        with self.store.transaction() as connection:
+            actor, version = _convention_write_context(
+                connection, auth_token, workspace_id, project_id,
+                expected_knowledge_version,
+            )
+            current = _find_convention(
+                connection, workspace_id, project_id, convention_id,
+            )
+            if current["event_type"] == status:
+                return {**_convention(current), "knowledge_version": version}
+            if current["event_type"] == "deleted":
+                raise WorkspaceServiceError(
+                    "PROJECT_CONVENTION_INACTIVE",
+                    "该约定已从今后上下文删除，原审计记录保留；需要时可明确新增约定",
+                )
+            _append_convention_event(
+                connection, convention_id=convention_id,
+                workspace_id=workspace_id, project_id=project_id,
+                rule_id=current["rule_id"], event_type=status,
+                actor_id=actor["actor_id"], version=version,
+                reason=reason, timestamp=timestamp,
+            )
+            result = _convention(_find_convention(
+                connection, workspace_id, project_id, convention_id,
+            ))
+        return result
+
+    def list_project_conventions(
+        self,
+        auth_token: str,
+        project_id: str,
+        *,
+        include_inactive: bool = False,
+    ) -> dict:
+        """Read current project conventions, optionally with retired statements.
+
+        Retired text is an audit/invalidation input, never an effective rule.
+        Corrected statements are included there even if the convention remains
+        active, so a conversation summary cannot revive an earlier revision.
+        """
+        with self.store.connection() as connection:
+            if not connection.in_transaction:
+                connection.execute("BEGIN")
+            project = connection.execute(
+                "SELECT * FROM projects WHERE project_id = ?",
+                (require_nonempty(project_id, "project_id"),),
+            ).fetchone()
+            if project is None:
+                raise WorkspaceServiceError("NOT_FOUND", "project 不存在")
+            require_permission(
+                connection, auth_token, workspace_id=project["workspace_id"],
+                project_id=project_id, permission="project.read",
+            )
+            rows = _latest_conventions(connection, project["workspace_id"], project_id)
+            state = connection.execute(
+                "SELECT lock_version FROM knowledge_states WHERE workspace_id = ?",
+                (project["workspace_id"],),
+            ).fetchone()
+            inactive = (
+                _inactive_convention_statements(connection, project["workspace_id"], project_id)
+                if include_inactive else None
+            )
+        conventions = [_convention(row) for row in rows]
+        result = {
+            "workspace_id": project["workspace_id"],
+            "project_id": project_id,
+            "knowledge_version": int(state["lock_version"]) if state else 0,
+            "conventions": [
+                item for item in conventions
+                if include_inactive or item["status"] == "active"
+            ],
+        }
+        if include_inactive:
+            result["inactive_statements"] = inactive
+        return result
+
+    def project_convention_context(
+        self, auth_token: str, project_id: str, *, context: dict,
+    ) -> dict:
+        """Project current convention lifecycle over a model's frozen evidence.
+
+        This read view never edits the frozen version, Brief, company/category
+        rules or the caller's context. Only explicitly retired convention rule
+        identities are excluded; matching text is not an identity. Snapshot
+        hashes continue to identify the original frozen evidence. Current
+        conventions live separately so new/corrected project decisions do not
+        masquerade as rules that were already present when the version froze.
+        """
+        knowledge = self.list_project_conventions(auth_token, project_id, include_inactive=True)
+        retired = knowledge["inactive_statements"]
+        retired_ids = {item["rule_id"] for item in retired if item.get("rule_id")}
+        result = deepcopy(context)
+
+        def retained(rule):
+            return not (isinstance(rule, dict) and rule.get("rule_id") in retired_ids
+                and rule.get("scope") in {None, "project"})
+
+        for evidence in (result, result.get("frozen_basis")):
+            if not isinstance(evidence, dict):
+                continue
+            effective = evidence.get("effective_knowledge")
+            if isinstance(effective, dict) and isinstance(effective.get("rules"), list):
+                effective["rules"] = [rule for rule in effective["rules"] if retained(rule)]
+            elif isinstance(effective, list):
+                evidence["effective_knowledge"] = [rule for rule in effective if retained(rule)]
+        result.update(
+            project_conventions=[item for item in knowledge["conventions"] if item["status"] == "active"],
+            retired_conventions=retired,
+            knowledge_version=knowledge["knowledge_version"],
+        )
+        return result
 
     def create_candidate(
         self,
@@ -269,10 +493,22 @@ class KnowledgeService:
             )
             rows = connection.execute(
                 """
-                SELECT c.*, a.approval_id, r.rule_id, r.active_version
+                SELECT c.*, a.approval_id, r.rule_id, r.active_version,
+                       current.event_type AS convention_event_type,
+                       current.rule_id AS current_convention_rule_id
                 FROM knowledge_candidates c
                 LEFT JOIN knowledge_approvals a ON a.candidate_id = c.candidate_id
                 LEFT JOIN knowledge_rules r ON r.candidate_id = c.candidate_id
+                LEFT JOIN knowledge_project_convention_events source
+                  ON source.rule_id = r.rule_id
+                 AND source.event_type IN ('created', 'corrected')
+                LEFT JOIN knowledge_project_convention_events current
+                  ON current.convention_id = source.convention_id
+                 AND NOT EXISTS (
+                     SELECT 1 FROM knowledge_project_convention_events newer
+                     WHERE newer.convention_id = current.convention_id
+                       AND newer.knowledge_version > current.knowledge_version
+                 )
                 WHERE c.workspace_id = ?
                 ORDER BY c.created_at, c.candidate_id
                 """,
@@ -282,6 +518,8 @@ class KnowledgeService:
 
     def list_effective_rules(self, auth_token: str, project_id: str) -> dict:
         with self.store.connection() as connection:
+            if not connection.in_transaction:
+                connection.execute("BEGIN")
             project = connection.execute(
                 "SELECT * FROM projects WHERE project_id = ?",
                 (require_nonempty(project_id, "project_id"),),
@@ -303,12 +541,26 @@ class KnowledgeService:
             }
             rows = connection.execute(
                 """
-                SELECT * FROM knowledge_rules
+                SELECT * FROM knowledge_rules r
                 WHERE workspace_id = ? AND (
                     (scope = 'company' AND target_id = ?) OR
                     (scope = 'category' AND target_id = ?) OR
                     (scope = 'project' AND target_id = ?) OR
                     (scope = 'personal' AND target_id = ?)
+                ) AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM knowledge_project_convention_events e
+                        WHERE e.rule_id = r.rule_id
+                    ) OR EXISTS (
+                        SELECT 1 FROM knowledge_project_convention_events e
+                        WHERE e.rule_id = r.rule_id
+                          AND e.event_type IN ('created', 'corrected')
+                          AND NOT EXISTS (
+                              SELECT 1 FROM knowledge_project_convention_events newer
+                              WHERE newer.convention_id = e.convention_id
+                                AND newer.knowledge_version > e.knowledge_version
+                          )
+                    )
                 )
                 ORDER BY active_version, rule_id
                 """,
@@ -338,6 +590,198 @@ class KnowledgeService:
             "precedence": ["company", "category", "project", "personal"],
             "pending_candidates_included": False,
         }
+
+
+def _require_convention_confirmation(confirmed: bool) -> None:
+    if confirmed is not True:
+        raise WorkspaceServiceError(
+            "PROJECT_CONVENTION_CONFIRMATION_REQUIRED",
+            "请明确确认要保存的项目创作约定；聊天意见不会自动成为项目要求",
+        )
+
+
+def _convention_write_context(
+    connection, auth_token: str, workspace_id: str, project_id: str,
+    expected_knowledge_version: int,
+) -> tuple[dict, int]:
+    _project_context(connection, workspace_id, project_id)
+    actor = require_permission(
+        connection, auth_token, workspace_id=workspace_id,
+        project_id=project_id, permission="knowledge.propose",
+    )
+    version = _ensure_state(connection, workspace_id)
+    check_version(version, expected_knowledge_version, "KNOWLEDGE_VERSION_CONFLICT")
+    return actor, version
+
+
+def _write_convention_rule(
+    connection, *, workspace_id: str, project_id: str, statement: str,
+    evidence_refs: list[str], actor_id: str, version: int, timestamp: str,
+    reason: str,
+) -> str:
+    """Persist explicit project knowledge in the original immutable ledger."""
+    candidate_id = new_id("knowledge_candidate")
+    approval_id = new_id("knowledge_approval")
+    rule_id = new_id("knowledge_rule")
+    statement_sha256 = sha256_text(statement)
+    evidence_json = _json(evidence_refs)
+    connection.execute(
+        """
+        INSERT INTO knowledge_candidates(
+            candidate_id, workspace_id, scope, target_id, statement,
+            statement_sha256, evidence_refs_json, proposed_by_actor_id,
+            knowledge_version, created_at
+        ) VALUES (?, ?, 'project', ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (candidate_id, workspace_id, project_id, statement, statement_sha256,
+         evidence_json, actor_id, version, timestamp),
+    )
+    connection.execute(
+        """
+        INSERT INTO knowledge_approvals(
+            approval_id, candidate_id, approved_scope, review_evidence,
+            approved_by_actor_id, created_at
+        ) VALUES (?, ?, 'project', ?, ?, ?)
+        """,
+        (approval_id, candidate_id, reason, actor_id, timestamp),
+    )
+    connection.execute(
+        """
+        INSERT INTO knowledge_rules(
+            rule_id, workspace_id, candidate_id, scope, target_id,
+            statement, statement_sha256, evidence_refs_json,
+            approved_by_actor_id, active_version, created_at
+        ) VALUES (?, ?, ?, 'project', ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (rule_id, workspace_id, candidate_id, project_id, statement,
+         statement_sha256, evidence_json, actor_id, version, timestamp),
+    )
+    return rule_id
+
+
+def _append_convention_event(
+    connection, *, convention_id: str, workspace_id: str, project_id: str,
+    rule_id: str, event_type: str, actor_id: str, version: int, reason: str,
+    timestamp: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO knowledge_project_convention_events(
+            event_id, convention_id, workspace_id, project_id, rule_id,
+            event_type, actor_id, knowledge_version, reason, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (new_id("project_convention_event"), convention_id, workspace_id,
+         project_id, rule_id, event_type, actor_id, version + 1, reason, timestamp),
+    )
+    _advance_state(connection, workspace_id, version, timestamp)
+    enqueue_outbox(
+        connection, aggregate_type="knowledge", aggregate_id=convention_id,
+        event_type=f"knowledge.project_convention_{event_type}",
+        payload={
+            "convention_id": convention_id, "project_id": project_id,
+            "rule_id": rule_id, "scope": "project", "actor_id": actor_id,
+            "knowledge_version": version + 1,
+        },
+    )
+
+
+_CONVENTION_SELECT = """
+    SELECT e.*, r.candidate_id, r.statement, r.statement_sha256,
+           r.evidence_refs_json, r.approved_by_actor_id, r.active_version,
+           (SELECT original.created_at
+            FROM knowledge_project_convention_events original
+            WHERE original.convention_id = e.convention_id
+            ORDER BY original.knowledge_version LIMIT 1) AS initial_created_at
+    FROM knowledge_project_convention_events e
+    JOIN knowledge_rules r ON r.rule_id = e.rule_id
+"""
+
+
+def _find_convention(connection, workspace_id: str, project_id: str, convention_id: str):
+    row = connection.execute(
+        _CONVENTION_SELECT + """
+        WHERE e.workspace_id = ? AND e.project_id = ? AND e.convention_id = ?
+        ORDER BY e.knowledge_version DESC LIMIT 1
+        """,
+        (workspace_id, project_id, require_nonempty(convention_id, "convention_id")),
+    ).fetchone()
+    if row is None:
+        raise WorkspaceServiceError("NOT_FOUND", "当前项目中不存在该项目约定")
+    return row
+
+
+def _latest_conventions(connection, workspace_id: str, project_id: str):
+    return connection.execute(
+        _CONVENTION_SELECT + """
+        WHERE e.workspace_id = ? AND e.project_id = ?
+          AND NOT EXISTS (
+              SELECT 1 FROM knowledge_project_convention_events newer
+              WHERE newer.convention_id = e.convention_id
+                AND newer.knowledge_version > e.knowledge_version
+          )
+        ORDER BY e.knowledge_version, e.convention_id
+        """,
+        (workspace_id, project_id),
+    ).fetchall()
+
+
+def _convention(row) -> dict:
+    return {
+        "convention_id": row["convention_id"],
+        "workspace_id": row["workspace_id"],
+        "project_id": row["project_id"],
+        "scope": "project",
+        "target_id": row["project_id"],
+        "rule_id": row["rule_id"],
+        "candidate_id": row["candidate_id"],
+        "statement": row["statement"],
+        "statement_sha256": row["statement_sha256"],
+        "evidence_refs": json.loads(row["evidence_refs_json"]),
+        "status": row["event_type"] if row["event_type"] in {"disabled", "deleted"} else "active",
+        "actor_id": row["actor_id"],
+        "approved_by_actor_id": row["approved_by_actor_id"],
+        "active_version": row["active_version"],
+        "knowledge_version": row["knowledge_version"],
+        "revision_version": row["knowledge_version"],
+        "reason": row["reason"],
+        "created_at": row["initial_created_at"],
+        "updated_at": row["created_at"],
+        "audit_preserved": True,
+    }
+
+
+def _inactive_convention_statements(connection, workspace_id: str, project_id: str) -> list[dict]:
+    rows = connection.execute(
+        """
+        SELECT e.convention_id, r.rule_id, r.statement, r.evidence_refs_json,
+               r.active_version, current.event_type, current.rule_id AS current_rule_id,
+               current.knowledge_version
+        FROM knowledge_project_convention_events e
+        JOIN knowledge_rules r ON r.rule_id = e.rule_id
+        JOIN knowledge_project_convention_events current
+          ON current.convention_id = e.convention_id
+        WHERE e.workspace_id = ? AND e.project_id = ?
+          AND e.event_type IN ('created', 'corrected')
+          AND NOT EXISTS (
+              SELECT 1 FROM knowledge_project_convention_events newer
+              WHERE newer.convention_id = current.convention_id
+                AND newer.knowledge_version > current.knowledge_version
+          )
+          AND (r.rule_id != current.rule_id OR current.event_type IN ('disabled', 'deleted'))
+        ORDER BY e.knowledge_version, r.rule_id
+        """,
+        (workspace_id, project_id),
+    ).fetchall()
+    return [{
+        "convention_id": row["convention_id"],
+        "rule_id": row["rule_id"],
+        "statement": row["statement"],
+        "evidence_refs": json.loads(row["evidence_refs_json"]),
+        "active_version": row["active_version"],
+        "knowledge_version": row["knowledge_version"],
+        "status": "superseded" if row["rule_id"] != row["current_rule_id"] else row["event_type"],
+    } for row in rows]
 
 
 def _ensure_state(connection, workspace_id: str) -> int:
@@ -429,6 +873,12 @@ def _evidence_refs(values: list[str]) -> list[str]:
 
 def _candidate(row) -> dict:
     result = row_dict(row)
+    status = "active" if result.get("approval_id") else "pending_approval"
+    if result.get("current_convention_rule_id"):
+        if result["current_convention_rule_id"] != result.get("rule_id"):
+            status = "superseded"
+        elif result.get("convention_event_type") in {"disabled", "deleted"}:
+            status = result["convention_event_type"]
     return {
         "candidate_id": result["candidate_id"],
         "workspace_id": result["workspace_id"],
@@ -439,7 +889,7 @@ def _candidate(row) -> dict:
         "evidence_refs": json.loads(result["evidence_refs_json"]),
         "proposed_by_actor_id": result["proposed_by_actor_id"],
         "knowledge_version": result["knowledge_version"],
-        "status": "active" if result.get("approval_id") else "pending_approval",
+        "status": status,
         "approval_id": result.get("approval_id"),
         "rule_id": result.get("rule_id"),
         "active_version": result.get("active_version"),

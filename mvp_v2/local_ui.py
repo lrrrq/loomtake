@@ -431,9 +431,28 @@ class AgentSessionPayload(BaseModel):
     project_id: str = Field(min_length=8, max_length=128)
 
 
+class AgentSessionUpdatePayload(BaseModel):
+    model_config = {"extra": "forbid"}
+    title: str | None = Field(default=None, max_length=120)
+    archived: bool | None = None
+    draft_content: str | None = Field(default=None, max_length=16000)
+    selected_source_ids: list[str] | None = Field(default=None, max_length=200)
+    expected_metadata_revision: int | None = Field(default=None, ge=0)
+
+
+class ProjectConventionPayload(BaseModel):
+    model_config = {"extra": "forbid"}
+    statement: str = Field(default='', max_length=6000)
+    expected_knowledge_version: int = Field(ge=0)
+    confirmed: bool = False
+    status: Literal['', 'disabled', 'deleted'] = ''
+    reason: str = Field(default='', max_length=1000)
+    source_message_id: str = Field(default='', max_length=200)
+
+
 class WorkbenchContextPayload(BaseModel):
     model_config = {"extra": "forbid"}
-    stage: Literal['creative', 'formal']
+    stage: Literal['creative', 'formal', 'discussion']
     scope: Literal['current', 'selected', 'all']
     current_target_id: str = Field(default='', max_length=160)
     selected_target_ids: list[str] = Field(default_factory=list, max_length=240)
@@ -449,10 +468,11 @@ class WorkbenchConfirmPayload(BaseModel):
 
 
 class AgentMessagePayload(BaseModel):
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(min_length=1, max_length=16000)
     run_id: Optional[str] = Field(default=None, min_length=8, max_length=128)
     context: WorkbenchContextPayload | None = None
     operation_key: str | None = Field(default=None, min_length=8, max_length=160)
+    director: bool = False
 
 
 class BriefAnalysisPayload(BaseModel):
@@ -2558,7 +2578,7 @@ def choose_local_path(kind: Literal["brief", "image", "review", "asset", "media"
     else:
         prompts = {
             "media": "选择项目图片/视频目录",
-            "source": "选择六类别资料库目录",
+            "source": "选择类别资料库目录",
             "output": "选择输出目录",
             "package": "选择 Loomtake 资产包目录",
         }
@@ -3089,6 +3109,49 @@ def create_app(
         except (WorkspaceServiceError, ArtifactResolutionError) as exc:
             raise agent_error(exc) from exc
 
+    @app.get("/api/agent/sessions")
+    def list_agent_sessions(project_id: str, q: str = '', include_archived: bool = False,
+                            x_mplus_agent_auth: str = Header(default='')) -> dict:
+        try:
+            return get_agent_api().list_sessions(x_mplus_agent_auth, project_id,
+                q=q, include_archived=include_archived)
+        except (WorkspaceServiceError, ArtifactResolutionError) as exc:
+            raise agent_error(exc) from exc
+
+    @app.patch('/api/agent/sessions/{agent_session_id}', dependencies=[Depends(verify_mutation)])
+    def update_agent_session(agent_session_id: str, payload: AgentSessionUpdatePayload,
+                             x_mplus_agent_auth: str = Header(default='')) -> dict:
+        try:
+            return get_agent_api().update_session(x_mplus_agent_auth, agent_session_id,
+                **payload.model_dump(exclude_unset=True))
+        except (WorkspaceServiceError, ArtifactResolutionError) as exc:
+            raise agent_error(exc) from exc
+
+    @app.get('/api/agent/sessions/{agent_session_id}/context')
+    def director_context(agent_session_id: str, x_mplus_agent_auth: str = Header(default='')) -> dict:
+        try:
+            return get_agent_api().director_context(x_mplus_agent_auth, agent_session_id)
+        except (WorkspaceServiceError, ArtifactResolutionError) as exc:
+            raise agent_error(exc) from exc
+
+    @app.post('/api/agent/sessions/{agent_session_id}/project-conventions', dependencies=[Depends(verify_mutation)])
+    def add_project_convention(agent_session_id: str, payload: ProjectConventionPayload,
+                               x_mplus_agent_auth: str = Header(default='')) -> dict:
+        try:
+            return get_agent_api().save_project_convention(x_mplus_agent_auth, agent_session_id, **payload.model_dump())
+        except (WorkspaceServiceError, ArtifactResolutionError) as exc:
+            raise agent_error(exc) from exc
+
+    @app.patch('/api/agent/sessions/{agent_session_id}/project-conventions/{convention_id}',
+               dependencies=[Depends(verify_mutation)])
+    def update_project_convention(agent_session_id: str, convention_id: str, payload: ProjectConventionPayload,
+                                  x_mplus_agent_auth: str = Header(default='')) -> dict:
+        try:
+            return get_agent_api().save_project_convention(x_mplus_agent_auth, agent_session_id,
+                convention_id=convention_id, **payload.model_dump())
+        except (WorkspaceServiceError, ArtifactResolutionError) as exc:
+            raise agent_error(exc) from exc
+
     @app.get("/api/agent/sessions/{agent_session_id}")
     def get_agent_session(
         agent_session_id: str,
@@ -3112,12 +3175,13 @@ def create_app(
         x_mplus_agent_auth: str = Header(default=""),
     ) -> dict:
         try:
-            if payload.context is not None:
+            if payload.director or payload.context is not None:
                 agent = get_agent_api()
                 if not hasattr(agent, 'script_revision'):
                     raise WorkspaceServiceError('FORMAL_ADVISOR_UNAVAILABLE', '当前工作台助手未接入')
                 result = agent.start_workbench(x_mplus_agent_auth, agent_session_id, content=payload.content,
-                    context=payload.context.model_dump(), operation_key=payload.operation_key)
+                    context=payload.context.model_dump() if payload.context is not None else None,
+                    operation_key=payload.operation_key)
                 if result['task']['status'] == 'understanding':
                     background_tasks.add_task(agent.execute_workbench, x_mplus_agent_auth, result['task']['task_id'])
                 return result
@@ -3127,13 +3191,6 @@ def create_app(
                 content=payload.content,
                 run_id=payload.run_id,
             )
-        except (WorkspaceServiceError, ArtifactResolutionError) as exc:
-            raise agent_error(exc) from exc
-
-    @app.get('/api/agent/workbench/{task_id}')
-    def read_workbench(task_id: str, x_mplus_agent_auth: str = Header(default='')) -> dict:
-        try:
-            return get_agent_api().read_workbench(x_mplus_agent_auth, task_id)
         except (WorkspaceServiceError, ArtifactResolutionError) as exc:
             raise agent_error(exc) from exc
 
@@ -3149,6 +3206,25 @@ def create_app(
     def undo_workbench(task_id: str, x_mplus_agent_auth: str = Header(default='')) -> dict:
         try:
             return get_agent_api().undo_workbench(x_mplus_agent_auth, task_id)
+        except (WorkspaceServiceError, ArtifactResolutionError) as exc:
+            raise agent_error(exc) from exc
+
+    @app.post('/api/agent/workbench/{task_id}/resume', dependencies=[Depends(verify_mutation)])
+    def resume_workbench(task_id: str, background_tasks: BackgroundTasks,
+                         x_mplus_agent_auth: str = Header(default='')) -> dict:
+        try:
+            agent = get_agent_api()
+            result = agent.resume_workbench(x_mplus_agent_auth, task_id)
+            if result['task']['status'] == 'understanding':
+                background_tasks.add_task(agent.execute_workbench, x_mplus_agent_auth, result['task']['task_id'])
+            return result
+        except (WorkspaceServiceError, ArtifactResolutionError) as exc:
+            raise agent_error(exc) from exc
+
+    @app.post('/api/agent/workbench/{task_id}/cancel', dependencies=[Depends(verify_mutation)])
+    def cancel_workbench(task_id: str, x_mplus_agent_auth: str = Header(default='')) -> dict:
+        try:
+            return get_agent_api().cancel_workbench(x_mplus_agent_auth, task_id)
         except (WorkspaceServiceError, ArtifactResolutionError) as exc:
             raise agent_error(exc) from exc
 
@@ -3302,6 +3378,13 @@ def create_app(
             ArtifactResolutionError,
             VersionWorkbenchRecoveryRequired,
         ) as exc:
+            raise agent_error(exc) from exc
+
+    @app.get('/api/agent/workbench/{task_id}')
+    def read_workbench(task_id: str, x_mplus_agent_auth: str = Header(default='')) -> dict:
+        try:
+            return get_agent_api().read_workbench(x_mplus_agent_auth, task_id)
+        except (WorkspaceServiceError, ArtifactResolutionError) as exc:
             raise agent_error(exc) from exc
 
     @app.get(

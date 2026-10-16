@@ -16,6 +16,7 @@ from .formal_script_assistant import (
     required_wide_shot_ids,
 )
 from .formal_image_workspace import FormalImageWorkspaceService, ImageShotSelection
+from .knowledge_service import KnowledgeService
 from .project_service import ProjectService
 from .run_contract import sha256_json
 from .task_service import TaskService
@@ -1362,15 +1363,17 @@ class FormalRevisionService:
             raise WorkspaceServiceError("NOT_FOUND", "当前项目还没有可修改脚本")
         if int(current.get("revision") or 0) != expected_revision:
             raise WorkspaceServiceError("DRAFT_REVISION_CONFLICT", "草稿已变化，请刷新后重新分析")
+        context = KnowledgeService(self.projects.store).project_convention_context(
+            auth_token, project["project_id"], context=self.workspace.assistant_context(
+                auth_token, workspace_id=project["workspace_id"], project_id=project["project_id"],
+            ))
         analysis = analyze_formal_script_instruction(
             instruction=instruction,
             shots=list(current.get("shots") or []),
             assistant_locked_shot_ids=list(current.get("assistant_locked_shot_ids") or []),
             selected_shot_ids=list(selected_shot_ids or []),
             editor_policy=self.assistant_editor_policy,
-            context=self.workspace.assistant_context(
-                auth_token, workspace_id=project["workspace_id"], project_id=project["project_id"],
-            ),
+            context=context,
         )
         by_id = {str(item["shot_id"]): item for item in current.get("shots") or []}
         if analysis.get("analysis_code") == "script_no_changes":

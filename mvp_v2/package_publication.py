@@ -130,13 +130,19 @@ class AssetPackagePublicationService:
             "sources": self.describe_sources(record),
         }
 
-    def create_semantic_revision(self, *, category_id: str, source_ref: str) -> dict:
+    def create_semantic_revision(self, *, category_id: str, source_ref: str,
+                                 editing_evidence: dict | None = None) -> dict:
         """Register an immutable semantic candidate. Existing review/alias actions activate it."""
         from .asset_package import _project_unpublished_source_semantics
         from .run_state import exclusive_lock
+        from .template_editing_methods import SCHEMA_VERSION, method_revision_identity
         source = self.resolve_template(category_id, source_ref)
+        previous = (load_asset_package(source['local_path']).get('source_semantics') or {}).get('editing_methods') or {}
+        inherited = previous if (editing_evidence is None and previous.get('schema_version') == SCHEMA_VERSION
+                                 and previous.get('methods')) else None
         revision = {"source_ref": source_ref, "source_package_sha256": source["package_sha256"],
-                    "projection_version": "mplus-source-semantics/v1"}
+                    "projection_version": "mplus-source-semantics/v1",
+                    "editing_methods": method_revision_identity(editing_evidence, compiled=inherited)}
         self.packages_root.mkdir(parents=True, exist_ok=True)
         with exclusive_lock(self.packages_root / ("." + source["package_id"] + ".lock")):
             for record in self.template_records(category_id):
@@ -149,7 +155,7 @@ class AssetPackagePublicationService:
                 raise PackagePublicationError("PACKAGE_VERSION_CONFLICT", "目标模板版本已存在")
             try:
                 manifest_path = self._bundler(source["local_path"], target, package_version=next_version)
-                _project_unpublished_source_semantics(manifest_path)
+                _project_unpublished_source_semantics(manifest_path, editing_evidence=editing_evidence)
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 manifest["semantic_revision"] = revision
                 write_json_atomic(manifest_path, manifest)

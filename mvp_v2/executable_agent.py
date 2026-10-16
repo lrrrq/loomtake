@@ -117,6 +117,8 @@ class ExecutableAgentService:
 
     def get_session(self, auth_token: str, agent_session_id: str) -> dict:
         session = self.services.readonly.get_session(auth_token, agent_session_id)
+        if not any(task['status'] == 'executing' for task in session['tasks']):
+            return session
         for task in session["tasks"]:
             if task["status"] == "executing":
                 self.sync_task(auth_token, task["task_id"])

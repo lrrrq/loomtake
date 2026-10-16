@@ -846,7 +846,7 @@ def bundle_asset_package_v3(
         raise
 
 
-def _project_unpublished_source_semantics(manifest_path: Path) -> None:
+def _project_unpublished_source_semantics(manifest_path: Path, *, editing_evidence: dict | None = None) -> None:
     """Enrich a newly built candidate before registration; never mutate a source version."""
     from .ai_spec import SEMANTIC_COLUMNS, refresh_ai_spec
     from .excel_io import _sheet_overview_cells
@@ -928,6 +928,25 @@ def _project_unpublished_source_semantics(manifest_path: Path) -> None:
         "sheets": sheets, "structure_policy": "沿用已登记结构；原文差异仅供核对，明确调整后才改变结构",
         "registered_structure": [{"value": rule["value"], "selector": rule["selector"]}
             for rule in rules["rules"] if rule["field"] == "structure"]}
+    context['template_rows'] = [{key: getattr(row, key, '') for key in (
+        'source_file', 'source_sheet', 'source_row', 'structure', 'generic_desc',
+        'shot_function', 'visual_desc', 'sound', 'note')} for row in template_rows]
+    from .template_editing_methods import SCHEMA_VERSION, build_editing_methods, read_method_source, method_revision_identity
+    previous_methods = (package.get('source_semantics') or {}).get('editing_methods') or {}
+    if editing_evidence is not None:
+        context['editing_methods'] = build_editing_methods(context, package['category_id'],
+            evidence=editing_evidence, source_snapshot=read_method_source(workbook_path))
+    elif previous_methods.get('schema_version') == SCHEMA_VERSION and previous_methods.get('methods'):
+        snapshot = read_method_source(workbook_path)
+        if (previous_methods.get('source_binding') or {}).get('source_content_sha256') != snapshot['source_content_sha256']:
+            raise AssetPackageError('原模板内容发生变化，请重新核对剪辑方法的来源')
+        context['editing_methods'] = json.loads(json.dumps(previous_methods))
+        context['editing_methods']['revision_identity'] = method_revision_identity(compiled=previous_methods)
+        context['editing_methods']['source_binding'].update(
+            source_file=workbook_path.name, workbook_sha256=context['workbook_sha256'],
+            original_workbook_sha256=original_sha)
+    else:
+        context['editing_methods'] = build_editing_methods(context, package['category_id'])
     semantic_path = package["package_root"] / "source_semantics.json"
     write_json_atomic(semantic_path, context)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

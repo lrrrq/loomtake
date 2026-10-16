@@ -159,6 +159,71 @@ class FormalAgentFixture:
 
 
 class FormalAgentTests(unittest.TestCase):
+    def test_requirement_analysis_asks_one_question_and_preserves_its_binding(self):
+        from io import BytesIO
+        from mvp_v2.formal_brief_input_adapter import FormalBriefInputAdapter, UploadedDocument
+        from mvp_v2.formal_brief_workspace_service import FormalBriefWorkspaceService
+        advisor = SimpleNamespace(decide=lambda *_: FormalAdvisorDecision(
+            intent='needs_clarification', summary='请先补充本次最关键的信息。',
+            questions=['客户品牌是什么？', '嘉宾是谁？', '活动在哪举办？'],
+            question_fields=['品牌或客户', '必须出现的内容', '使用场景'], candidate_action='none'))
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = FormalAgentFixture(Path(tmp), advisor=advisor)
+            adapter = FormalBriefInputAdapter(FormalBriefWorkspaceService(fixture.store,
+                artifact_root=Path(tmp) / 'data'), data_root=Path(tmp) / 'data')
+            fixture.agent.script_revision = SimpleNamespace(brief_adapter=adapter)
+            adapter.import_uploads(fixture.token, workspace_id=fixture.workspace_id,
+                project_id=fixture.project['project_id'], expected_project_version=0,
+                uploads=[UploadedDocument('匿名需求.txt', BytesIO('脚本类型：展会'.encode()), True)])
+            result = fixture.agent.analyze_brief(fixture.token,
+                fixture.session['agent_session_id'], content='还需要补充什么？')
+            self.assertEqual(result['response']['questions'], ['客户品牌是什么？'])
+            self.assertEqual(len(result['response']['question_bindings']), 1)
+            self.assertEqual(result['response']['question_bindings'][0]['field'], '品牌或客户')
+
+    def test_requirement_analysis_reads_saved_answers_after_restart_without_analysis_message(self):
+        from io import BytesIO
+        from mvp_v2.formal_brief_input_adapter import FormalBriefInputAdapter, UploadedDocument
+        from mvp_v2.formal_brief_workspace_service import FormalBriefWorkspaceService
+        contexts = []
+
+        def decide(_message, context):
+            contexts.append(context)
+            return FormalAdvisorDecision(intent='needs_clarification', summary='请补充嘉宾。',
+                questions=['KOL的具体身份和到场时间是否已确定？'],
+                question_fields=['必须出现的内容'], candidate_action='none')
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = FormalAgentFixture(Path(tmp), advisor=SimpleNamespace(decide=decide))
+            adapter = FormalBriefInputAdapter(FormalBriefWorkspaceService(fixture.store,
+                artifact_root=Path(tmp) / 'data'), data_root=Path(tmp) / 'data')
+            fixture.agent.script_revision = SimpleNamespace(brief_adapter=adapter)
+            scope = {'workspace_id': fixture.workspace_id, 'project_id': fixture.project['project_id']}
+            adapter.import_uploads(fixture.token, **scope, expected_project_version=0,
+                uploads=[UploadedDocument('匿名需求.txt', BytesIO('脚本类型：展会\n必须出现的内容：KOL体验打卡'.encode()), True)])
+            session_id = fixture.session['agent_session_id']
+            first = fixture.agent.analyze_brief(fixture.token, session_id, content='还需要什么？')
+            binding = first['response']['question_bindings'][0]
+            answer = '匿名嘉宾，一个；到场时间不确定，不影响创作'
+            project = fixture.projects.get_project(fixture.token, scope['project_id'])
+            fixture.agent.answer_brief_question(fixture.token, session_id,
+                answers=[{'question_id': binding['question_id'], 'analysis_task_id': binding['analysis_task_id'],
+                    'content': answer}], content='', expected_project_version=project['project_version'],
+                idempotency_key='saved-before-analysis-failure')
+            # Saving succeeded, but no second analysis task/message was created.
+            # A new adapter must reconstruct the saved answer from frozen inputs.
+            fixture.agent.script_revision.brief_adapter = FormalBriefInputAdapter(
+                FormalBriefWorkspaceService(WorkspaceStore(fixture.store.database_path),
+                    artifact_root=Path(tmp) / 'data'), data_root=Path(tmp) / 'data')
+            fixture.agent.analyze_brief(fixture.token, session_id, content='重新分析已存需求')
+            records = contexts[-1].get('answered_questions', [])
+            recorded = next((item for item in records if item.get('question_id') == binding['question_id']), None)
+            self.assertIsNotNone(recorded)
+            self.assertEqual(recorded['question'], binding['question'])
+            self.assertEqual(recorded['answer'], answer)
+            self.assertTrue(recorded['source_document_id'])
+            self.assertEqual(fixture.generation.generate_count, 0)
+
     def test_question_bound_short_answer_preserves_prior_sources_and_replays(self):
         from io import BytesIO
         from mvp_v2.formal_brief_input_adapter import FormalBriefInputAdapter, UploadedDocument
@@ -1038,7 +1103,9 @@ class FormalAgentContextTests(unittest.TestCase):
             fixture.agent.script_revision = SimpleNamespace(
                 brief_adapter=SimpleNamespace(read_current_formal=read("brief", {
                     "confirmation_status": "confirmed", "brief": {"facts": [
-                        {"label": "必须出现的内容", "value": "匿名产品演示"},
+                        {"fact_id": "anonymous-required-content", "field_path": "必须出现的内容",
+                         "value_json": json.dumps("匿名产品演示"),
+                         "label": "必须出现的内容", "value": "匿名产品演示"},
                     ]},
                 })),
                 workspace=SimpleNamespace(read_current=read("script", {
@@ -1060,6 +1127,12 @@ class FormalAgentContextTests(unittest.TestCase):
             fixture.agent.review_workspace = SimpleNamespace(read_current=read("review", {
                 "state": "blocked", "message": "请先确认逐镜图片。", "issues": [],
             }))
+            # The production adapter also exposes its authority service and
+            # payload root, used by the director's optional draft projection.
+            fixture.agent.script_revision.brief_adapter.service = SimpleNamespace(
+                artifacts=SimpleNamespace(root=Path(tmp) / "formal-brief-payloads"),
+                read_current_formal=fixture.agent.script_revision.brief_adapter.read_current_formal,
+            )
             result = fixture.submit("为什么现在不能交付？")
             self.assertEqual(set(reads), {"brief", "script", "images", "review"})
             self.assertIsNone(result["response"]["plan_status"])
@@ -1068,7 +1141,7 @@ class FormalAgentContextTests(unittest.TestCase):
             self.assertEqual(seen[0]["images"]["shots"][1]["temporary_reason"], "待补细节图")
             self.assertEqual(seen[0]["review"]["message"], "请先确认逐镜图片。")
 
-    def test_recent_dialogue_is_bounded_redacted_and_scoped_to_current_session(self):
+    def test_short_dialogue_is_preserved_redacted_and_scoped_to_current_session(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"DEEPSEEK_API_KEY": "audit-private-provider-key"}):
             fixture = FormalAgentFixture(Path(tmp), advisor=StaticAdvisor("explain_status"))
             for index in range(8):
@@ -1078,10 +1151,9 @@ class FormalAgentContextTests(unittest.TestCase):
             )
             history = context["conversation"]
             self.assertTrue(history)
-            self.assertLessEqual(len(history), 12)
             serialized = json.dumps(history, ensure_ascii=False)
-            self.assertIn("查看状态 7", serialized)
-            self.assertNotIn("查看状态 0", serialized)
+            for index in range(8):
+                self.assertIn(f"查看状态 {index}", serialized)
             self.assertNotIn("audit-private-provider-key", serialized)
             self.assertNotIn(b"audit-private-provider-key", fixture.store.database_path.read_bytes())
             other = fixture.tasks.create_agent_session(fixture.token, project_id=fixture.project["project_id"])

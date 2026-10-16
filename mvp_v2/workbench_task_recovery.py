@@ -16,8 +16,17 @@ def validate_child_parent(tasks, auth_token, child, parent_task_id):
 def parent_for_child(tasks, auth_token, task_id):
     """Resolve only a persisted, same-project workbench relationship."""
     child = tasks.get_task(auth_token, task_id)
+    image_task = child['task_type'] == 'formal_image_candidates'
+    if image_task:
+        # Image-batch creation records its immutable parent with the original
+        # user message, before potentially large retrieval progress events.
+        events = tasks.list_task_events(auth_token, task_id, first_with_detail='user_message',
+            detail_paths=('workbench_parent_task_id',))
+        parent_id = next((event['details'].get('workbench_parent_task_id') for event in events), None)
+        if parent_id:
+            return validate_child_parent(tasks, auth_token, child, parent_id)
     with tasks.store.connection() as connection:
-        marker = connection.execute("""SELECT json_extract(details_json,'$.workbench_parent_task_id') AS parent
+        marker = None if image_task else connection.execute("""SELECT json_extract(details_json,'$.workbench_parent_task_id') AS parent
             FROM task_events WHERE task_id=? AND json_extract(details_json,'$.workbench_parent_task_id') IS NOT NULL
             ORDER BY rowid DESC LIMIT 1""", (task_id,)).fetchone()
         if marker:
@@ -57,6 +66,10 @@ def sync_workbench(agent, auth_token, task_id):
         task, data, _ = creative_workbench._load(agent, auth_token, task_id)
         if task['status'] != 'executing':
             return creative_workbench.read(agent, auth_token, task_id)
+        if data.get('stop_requested'):
+            return creative_workbench._record(agent, auth_token, task, data, {
+                'type': 'workbench_cancelled', 'task_id': task_id, 'can_resume': True,
+                'summary': '已停止后续步骤。原稿、原要求和已准备好的结果均已保留。'}, 'cancelled')
         instruction = data['request']['content']
         response = {
             'type': 'workbench_failed',

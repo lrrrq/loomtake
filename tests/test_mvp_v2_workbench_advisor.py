@@ -97,7 +97,8 @@ class WorkbenchAdvisorTests(unittest.TestCase):
             questions=["更偏向哪种表达方向？"], choices=choices,
             constraints={"preserve": ["已确认事实", "总时长"], "unknown": ["期望的表达方向"]}))
         self.assertEqual(decision.actions, [])
-        self.assertEqual([choice.model_dump() for choice in decision.choices], choices)
+        self.assertEqual([choice.model_dump() for choice in decision.choices],
+                         [{**choice, "description": ""} for choice in choices])
         self.assertEqual(decision.constraints.total_seconds, None)
         self.assertIn("先给两个有区别的创作方向", self.calls[0][0])
 

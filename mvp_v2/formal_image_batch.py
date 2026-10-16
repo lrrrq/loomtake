@@ -93,7 +93,7 @@ def _start(service, auth_token, *, workspace_id, project_id, instruction,
           expected_project_version, idempotency_key, selected_shot_ids=None,
           agent_session_id=None, save_eligible=False, mode='', target_kind='formal_shot',
           selected_block_ids=None, expected_creative_revision=None, projection_task_id=None,
-          workbench_parent_task_id=None):
+          workbench_parent_task_id=None, reuse_candidates_task_id=None):
     """Persist scope and basis before any provider-backed candidate search."""
     if not service.writes_enabled or service.image_workspace is None:
         raise WorkspaceServiceError('FORMAL_IMAGE_REVISION_DISABLED', '图片助手暂不可用')
@@ -114,6 +114,7 @@ def _start(service, auth_token, *, workspace_id, project_id, instruction,
         **({'mode': mode} if mode else {}),
         **({'projection_task_id': projection_task_id} if projection_task_id else {}),
         **({'workbench_parent_task_id': workbench_parent_task_id} if workbench_parent_task_id else {}),
+        **({'reuse_candidates_task_id': reuse_candidates_task_id} if reuse_candidates_task_id else {}),
         **({'target_kind': target_kind, 'selected_block_ids': selected_block_ids or [],
             'expected_creative_revision': expected_creative_revision} if target_kind == 'creative_block' else {})}
     fingerprint = sha256_json(request)
@@ -139,16 +140,32 @@ def _start(service, auth_token, *, workspace_id, project_id, instruction,
     all_ids = {r['shot_id'] for r in rows}
     if len(set(selected)) != len(selected) or not set(selected).issubset(all_ids):
         raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '所选目标不属于当前稿')
-    explicit = _referenced_shot_ids(text, rows, unit='段' if target_kind == 'creative_block' else '镜')
-    if explicit is None:
-        raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '指令中的段号或镜号不属于当前稿')
-    half = rows[len(rows)//2:] if '后半段' in text else rows[:(len(rows)+1)//2] if '前半段' in text else []
-    sections = [r for r in rows if str(r.get('structure') or '') and str(r['structure']) in text]
-    whole = bool(re.search(r'整[份稿片]|全[稿部片]|所有|每[个一]?[镜段]', text))
-    targets = explicit or [r['shot_id'] for r in rows if whole] or [r['shot_id'] for r in half or sections]
-    if selected and targets and not set(targets).issubset(selected):
-        raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '指令范围超出当前选择，请调整范围')
-    targets = targets or selected
+    if workbench_parent_task_id:
+        parent = service.tasks.get_task(auth_token, workbench_parent_task_id)
+        events = service.tasks.list_task_events(auth_token, workbench_parent_task_id)
+        parent_data = next((event['details']['workbench'] for event in reversed(events)
+            if event.get('details', {}).get('workbench')), {})
+        blocked = {action['action_index'] for action in parent_data.get('waiting_actions', [])}
+        allowed = {identity for action in parent_data.get('actions', [])
+            if action['kind'] == 'find_images' and action['action_index'] not in blocked
+            for identity in action['target_ids']}
+        if (parent['project_id'] != project_id or parent['actor_id'] != actor['actor_id']
+                or parent['agent_session_id'] != agent_session_id or not selected or not set(selected) <= allowed):
+            raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '配图范围不属于本次已解析的工作台动作')
+        # Dependency descriptions can mention other rows without making them
+        # image targets. The authenticated parent's resolved scope is authority.
+        targets = selected
+    else:
+        explicit = _referenced_shot_ids(text, rows, unit='段' if target_kind == 'creative_block' else '镜')
+        if explicit is None:
+            raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '指令中的段号或镜号不属于当前稿')
+        half = rows[len(rows)//2:] if '后半段' in text else rows[:(len(rows)+1)//2] if '前半段' in text else []
+        sections = [r for r in rows if str(r.get('structure') or '') and str(r['structure']) in text]
+        whole = bool(re.search(r'整[份稿片]|全[稿部片]|所有|每[个一]?[镜段]', text))
+        targets = explicit or [r['shot_id'] for r in rows if whole] or [r['shot_id'] for r in half or sections]
+        if selected and targets and not set(targets).issubset(selected):
+            raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '指令范围超出当前选择，请调整范围')
+        targets = targets or selected
     if not targets:
         raise WorkspaceServiceError('IMAGE_SHOT_CLARIFICATION_REQUIRED', '请选择段落或镜头，或说明整稿、前半段、后半段及具体编号')
     mode = mode or ('replace_selected' if re.search(r'换|替|重新配图', text) else 'fill_missing')
@@ -172,6 +189,40 @@ def _start(service, auth_token, *, workspace_id, project_id, instruction,
         'progress': {'completed': 0, 'total': len(targets), 'current_target_id': ''}}
     if creative:
         response.update(creative_revision=creative['creative_revision'], draft_id=creative['draft_id'])
+    p['retrieval_basis_by_target'] = {row['shot_id']: sha256_json(row) for row in rows if row['shot_id'] in targets}
+    if reuse_candidates_task_id:
+        if (not workbench_parent_task_id or parent_data.get('continuation', {}).get('seed_image_task_id') != reuse_candidates_task_id):
+            raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '已有候选不属于本次续做记录')
+        old_task, old_params, old_response = _load(service, auth_token, reuse_candidates_task_id)
+        if (old_task['project_id'] != project_id or old_task['actor_id'] != actor['actor_id']
+                or old_task['agent_session_id'] != agent_session_id
+                or old_params.get('workbench_parent_task_id') != parent_data.get('continuation_of_task_id')):
+            raise WorkspaceServiceError('IMAGE_SCOPE_MISMATCH', '已有候选与本次项目会话不一致')
+        same_version = old_params.get('expected_project_version') == p['expected_project_version']
+        owned_proposal_advance = (
+            old_params.get('expected_project_version') == parent_data.get('before', {}).get('project_version')
+            and (parent_data.get('text_subject') or {}).get('project_version') == p['expected_project_version'])
+        if (old_task['status'] in {'waiting_user', 'failed', 'cancelled'}
+                and old_params.get('mode') == p['mode'] and old_params.get('query') == p['query']
+                and (same_version or owned_proposal_advance)):
+            for item in old_response.get('shots', []):
+                identity = item['target_id']
+                if (identity in targets and item.get('candidates') and not item.get('read_error')
+                        and old_params.get('retrieval_basis_by_target', {}).get(identity) == p['retrieval_basis_by_target'][identity]):
+                    restored = deepcopy(item)
+                    for candidate in restored['candidates']:
+                        candidate['preview_url'] = formal_image_preview_url(candidate, workspace_id=workspace_id,
+                            project_id=project_id, expected_project_version=expected_project_version)
+                    if restored.get('before'):
+                        restored['before']['preview_url'] = formal_image_preview_url(restored['before'], workspace_id=workspace_id,
+                            project_id=project_id, expected_project_version=expected_project_version)
+                    response['shots'].append(restored)
+                    for candidate in item['candidates']:
+                        key = candidate['candidate_key']
+                        if key in old_params['choices']:
+                            p['choices'][key] = deepcopy(old_params['choices'][key])
+            response['reused_target_ids'] = [item['target_id'] for item in response['shots']]
+            response['progress']['completed'] = len(response['shots'])
     session = service.tasks.get_agent_session(auth_token, agent_session_id) if agent_session_id else service.tasks.create_agent_session(auth_token, project_id=project_id)
     if session['project_id'] != project_id:
         raise WorkspaceServiceError('CROSS_PROJECT_DENIED', '会话不属于当前项目')
@@ -260,7 +311,7 @@ def sync(service, auth_token, *, task_id):
                 task, p, response = _load(service, auth_token, task_id)
                 # Confirmation has its own durable idempotent save receipt;
                 # leave that operation to confirm() reconciliation.
-                events = service.tasks.list_task_events(auth_token, task_id)
+                events = service.tasks.list_task_events(auth_token, task_id, latest_with_detail='image_batch_apply')
                 applying = any(event.get('details', {}).get('image_batch_apply') for event in events)
                 if task['status'] == 'executing' and not applying:
                     response.update(status='failed', error_code='IMAGE_RETRIEVAL_INTERRUPTED',
@@ -288,8 +339,23 @@ def _execute_owned(service, auth_token, *, task_id):
             response.update(summary='配图检索未完成，已保留当前进度。请读取最新稿后重试。',
                             error_code=getattr(exc, 'code', 'IMAGE_RETRIEVAL_FAILED'))
             service.tasks.transition_task(auth_token, task_id=task_id, expected_task_version=task['task_version'],
-                status='failed', details={'response': response, 'internal_image_batch': p})
+                status='failed', details=_progress_details(response, p))
         raise
+
+
+def _parent_stopped(service, auth_token, task, p):
+    parent_id = p.get('workbench_parent_task_id')
+    if not parent_id:
+        return False
+    from .workbench_task_recovery import validate_child_parent
+    validate_child_parent(service.tasks, auth_token, task, parent_id)
+    parent = service.tasks.get_task(auth_token, parent_id)
+    if parent['status'] == 'cancelled':
+        return True
+    events = service.tasks.list_task_events(auth_token, parent_id)
+    data = next((event['details']['workbench'] for event in reversed(events)
+        if event.get('details', {}).get('workbench')), {})
+    return bool(data.get('stop_requested'))
 
 
 def _execute(service, auth_token, task, p, response):
@@ -303,11 +369,13 @@ def _execute(service, auth_token, task, p, response):
     public, choices = response['shots'], p['choices']
     for row in rows:
         sid, no = row['shot_id'], str(row['shot_no'])
-        if sid not in p['target_ids']:
+        if sid not in p['target_ids'] or sid in response.get('reused_target_ids', []):
             continue
+        if _parent_stopped(service, auth_token, task, p):
+            break
         response['progress']['current_target_id'] = sid
         task = service.tasks.record_task_progress(auth_token, task_id=task['task_id'], expected_task_version=task['task_version'],
-            details={'response': response, 'internal_image_batch': p})
+            details=_progress_details(response, p))
         old, saved = existing.get(sid, {}), pending.get(sid)
         preserve = bool(saved and saved.get('selection_active', True) and not saved.get('unavailable')) or old.get('confirmed')
         item = {identity_field: sid, 'target_id': sid, 'target_kind': p['target_kind'], 'shot_no': no,
@@ -333,7 +401,7 @@ def _execute(service, auth_token, task, p, response):
                     item['candidates'].append({**candidate, 'candidate_key': key, 'preview_url': href, 'source_label': '项目素材'})
                     choices[key] = {identity_field: sid, 'target_id': sid, 'target_kind': p['target_kind'],
                                     'image_key': candidate['image_key'], 'query': p['query']}
-                if library is not None:
+                if library is not None and not _parent_stopped(service, auth_token, task, p):
                     try:
                         catalog = library.candidates(auth_token, **scope, expected_project_version=version,
                             shot_no=no, query=p['query'], candidate_limit=None, **({'block_id': sid} if creative else {}),
@@ -368,7 +436,7 @@ def _execute(service, auth_token, task, p, response):
         public.append(item)
         response['progress']['completed'] = len(public)
         task = service.tasks.record_task_progress(auth_token, task_id=task['task_id'], expected_task_version=task['task_version'],
-            details={'response': response, 'internal_image_batch': p})
+            details=_progress_details(response, p))
     ranked, pinned = {}, {}
     by_id = {item['target_id']: item for item in public}
     for row in rows:
@@ -405,11 +473,7 @@ def _execute(service, auth_token, task, p, response):
                         + ('优先候选待核对：' + '；'.join(reasons[:5]) if reasons else '请查看各候选的画面与来源依据。'))
                 if item.get('semantic_warning'):
                     item.update(reason_code='semantic_failed', reason=item['semantic_warning'])
-            visible = item['candidates'][:8]
-            selected = next((c for c in item['candidates'] if c['candidate_key'] == item['selected_candidate_key']), None)
-            if selected and selected not in visible:
-                visible.append(selected)
-            item['candidates'] = visible
+            item['candidates'] = _visible_candidates(item)
         item['included'] = bool(item.get('selected_candidate_key'))
         _exclude_unchanged(item)
         before = item.get('before')
@@ -418,7 +482,8 @@ def _execute(service, auth_token, task, p, response):
     visible_keys = {c['candidate_key'] for item in public for c in item['candidates']}
     p['choices'] = {key: value for key, value in choices.items() if key in visible_keys}
     saved_ids = []
-    if p['save_eligible']:
+    stopped = _parent_stopped(service, auth_token, task, p)
+    if p['save_eligible'] and not stopped:
         selections = [dict(p['choices'][item['selected_candidate_key']], checked=False, selection_active=True)
                       for item in public if item.get('selected_candidate_key') and item.get('included')]
         if selections:
@@ -436,11 +501,35 @@ def _execute(service, auth_token, task, p, response):
            ('gap_block_ids' if creative else 'gap_shot_ids'): [s['target_id'] for s in public if s['state'] == 'gap'],
            ('affected_block_ids' if creative else 'affected_shot_ids'): [s['target_id'] for s in public if s.get('selected_candidate_key')]})
     response['progress']['current_target_id'] = ''
-    if p['save_eligible']:
+    if stopped:
+        response.update(stop_requested=True,
+            remaining_target_ids=[sid for sid in p['target_ids'] if sid not in by_id],
+            summary='已停止后续检索，已读取的候选和来源保留，原有配图未修改。')
+    elif p['save_eligible']:
         response['summary'] = f'已暂存 {len(saved_ids)} 处图片选择。请核对画面，再处理剩余缺口。'
     task = service.tasks.transition_task(auth_token, task_id=task['task_id'], expected_task_version=task['task_version'],
-        status='completed' if p['save_eligible'] else 'waiting_user', details={'response': response, 'internal_image_batch': p})
+        status='cancelled' if stopped else 'completed' if p['save_eligible'] else 'waiting_user',
+        details={'response': response, 'internal_image_batch': p})
     return {'task': task, 'response': response}
+
+
+def _visible_candidates(shot):
+    visible = shot.get('candidates', [])[:8]
+    selected = next((candidate for candidate in shot.get('candidates', [])
+                     if candidate['candidate_key'] == shot.get('selected_candidate_key')), None)
+    if selected and selected not in visible:
+        visible.append(selected)
+    return visible
+
+
+def _progress_details(response, parameters):
+    # Allocation still sees the full in-memory pool. Persist only the same
+    # review candidates exposed by the final proposal, not every catalogue row
+    # again after each shot. Completed entries remain recoverable after a stop.
+    shots = [{**shot, 'candidates': _visible_candidates(shot)} for shot in response.get('shots', [])]
+    keys = {candidate['candidate_key'] for shot in shots for candidate in shot['candidates']}
+    return {'response': {**response, 'shots': shots}, 'internal_image_batch': {
+        **parameters, 'choices': {key: value for key, value in parameters.get('choices', {}).items() if key in keys}}}
 
 
 def _exclude_unchanged(shot):
@@ -454,7 +543,7 @@ def _exclude_unchanged(shot):
 
 def _load(service, auth_token, task_id):
     task = service.tasks.get_task(auth_token, task_id)
-    events = service.tasks.list_task_events(auth_token, task_id=task_id)
+    events = service.tasks.list_task_events(auth_token, task_id=task_id, latest_with_detail='internal_image_batch')
     event = next((e for e in reversed(events) if (e.get('details') or {}).get('internal_image_batch')), None)
     if event is None:
         raise WorkspaceServiceError('INVALID_INPUT', '当前任务不是配图方案')
@@ -483,6 +572,16 @@ def read(service, auth_token, *, workspace_id, project_id, task_id=None):
     if task['status'] == 'executing':
         sync(service, auth_token, task_id=task_id)
         task, parameters, response = _load(service, auth_token, task_id)
+    return {'task': task, 'response': public_response(service, auth_token, task, parameters, response, project=project)}
+
+
+def public_response(service, auth_token, task, parameters, response, *, project=None):
+    """Read-only presentation of a persisted proposal under its original basis."""
+    project = project or service.projects.get_project(auth_token, task['project_id'])
+    workspace_id, project_id = project['workspace_id'], project['project_id']
+    if task['project_id'] != project_id:
+        raise WorkspaceServiceError('CROSS_PROJECT_DENIED', '方案不属于当前项目')
+    response = deepcopy(response)
     response['status'] = task['status']
     response['basis_changed'] = (
         (response.get('project_version') if task['status'] == 'completed' else parameters['expected_project_version']) != project['project_version']
@@ -506,7 +605,16 @@ def read(service, auth_token, *, workspace_id, project_id, task_id=None):
         response['basis_changed'] = picture_changed or progress['revision'] != parameters['expected_revision']
     if task['status'] == 'cancelled':
         response['summary'] = '已取消建议，原选图进度保持不变。'
-    return {'task': task, 'response': response}
+    if not response['basis_changed']:
+        for shot in response.get('shots', []):
+            for candidate in shot.get('candidates', []):
+                candidate['preview_url'] = formal_image_preview_url(candidate, workspace_id=workspace_id,
+                    project_id=project_id, expected_project_version=project['project_version'])
+            before = shot.get('before') or {}
+            if before.get('preview_url', '').startswith(f'/api/formal/projects/{project_id}/images/'):
+                before['preview_url'] = formal_image_preview_url(before, workspace_id=workspace_id,
+                    project_id=project_id, expected_project_version=project['project_version'])
+    return response
 
 
 def revise(service, auth_token, *, task_id, proposal_digest, updates):
@@ -624,7 +732,7 @@ def confirm(service, auth_token, *, task_id, proposal_digest, selected_candidate
             expected_task_version=task['task_version'], status='executing',
             details={'image_batch_apply': {'proposal_digest': proposal_digest, 'candidate_keys': keys}})
     elif task['status'] == 'executing':
-        events = service.tasks.list_task_events(auth_token, task_id=task_id)
+        events = service.tasks.list_task_events(auth_token, task_id=task_id, latest_with_detail='image_batch_apply')
         attempt = next((e['details']['image_batch_apply'] for e in reversed(events) if e.get('details', {}).get('image_batch_apply')), {})
         if attempt != {'proposal_digest': proposal_digest, 'candidate_keys': keys}:
             raise WorkspaceServiceError('IDEMPOTENCY_CONFLICT', '本建议正在应用其他选择，请先读取原请求结果')
@@ -657,7 +765,7 @@ def confirm_composed(service, auth_token, *, task_id, proposal_digest, selected_
                      parent_task_id, retained_target_ids):
     """Rebase only a server-owned, atomically applied parent proposal."""
     parent = service.tasks.get_task(auth_token, parent_task_id)
-    events = service.tasks.list_task_events(auth_token, parent_task_id)
+    events = service.tasks.list_task_events(auth_token, parent_task_id, latest_with_detail='workbench')
     workbench = next((e['details']['workbench'] for e in reversed(events)
                       if e.get('details', {}).get('workbench')), None)
     task, p, response = _load(service, auth_token, task_id)

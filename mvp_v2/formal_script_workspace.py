@@ -1672,6 +1672,23 @@ class FormalScriptWorkspaceService:
                             or (adaptation.get("basis") or {}).get("plan_sha256") != sha256_file(plan_ref.path)
                             or detail.get("原创改编依据") != json.dumps(adaptation, ensure_ascii=False, sort_keys=True)):
                         raise WorkspaceServiceError("INTEGRITY_ERROR", "原创改编依据与本次修改不一致")
+                    # The verified frozen Brief is an archived document, not a
+                    # client-supplied manual-review evidence envelope. Preserve
+                    # its complete JSON without interpreting nested quote keys
+                    # as command parameters. Normalize only after validation.
+                    value = deepcopy(value)
+                    archived = _archive_original_context(adaptation)
+                    frozen_plan = _read_json(plan_ref.path, "冻结规划")
+                    frozen_basis = _archive_original_context({"basis": {
+                        "brief": frozen_plan.get("brief") or {},
+                        "creative_standard": (frozen_plan.get("constraints") or {}).get("creative_standard") or {},
+                    }})["basis"]
+                    if any(archived["basis"].get(key) != expected
+                           for key, expected in frozen_basis.items()):
+                        raise WorkspaceServiceError("INTEGRITY_ERROR", "原创改编上下文与冻结规划不一致")
+                    value['evidence']['adaptation'] = archived
+                    value['detail_override']['原创改编依据'] = json.dumps(
+                        archived, ensure_ascii=False, sort_keys=True)
                 target = (shot_no, "__source_rebind__")
                 if target in seen:
                     raise WorkspaceServiceError("INVALID_INPUT", "来源重匹配目标重复")
@@ -1882,7 +1899,7 @@ class FormalScriptWorkspaceService:
                     prior_adaptation = prior_detail.get("原创改编依据")
                     if isinstance(prior_adaptation, str) and prior_adaptation:
                         prior_adaptation = json.loads(prior_adaptation)
-                    adaptation = {
+                    adaptation = _archive_original_context({
                         "origin": "original_suggestion",
                         "label": "原创拍摄建议",
                         "fields": adapted_values,
@@ -1895,7 +1912,7 @@ class FormalScriptWorkspaceService:
                             "source_catalog_sha256": sha256_file(catalog_ref.path),
                         },
                         "previous": prior_adaptation or None,
-                    }
+                    })
                     prior_detail["原创改编依据"] = json.dumps(adaptation, ensure_ascii=False, sort_keys=True)
                     prior_detail["改编说明"] = "原创拍摄建议：" + "；".join(_EDITABLE_FIELDS[field] + "=" + str(value) for field, value in adapted_values.items()) + "。依据：已确认 Brief、创作标准与本次修改；来源仅供创意参考。"
                     enhanced.append({
@@ -3190,3 +3207,19 @@ def _recover_frozen_decisions(
 def _shot_sort_key(value: str) -> tuple[int, int | str]:
     normalized = str(value or "").strip()
     return (0, int(normalized)) if normalized.isdigit() else (1, normalized)
+
+
+def _archive_original_context(adaptation: dict) -> dict:
+    """Keep frozen source documents lossless and separate from review commands."""
+    result = deepcopy(adaptation)
+    basis = result.get('basis')
+    if isinstance(basis, dict):
+        for key in ('brief', 'creative_standard'):
+            if key in basis:
+                archived = json.dumps(basis.pop(key), ensure_ascii=False, sort_keys=True)
+                if key + '_json' in basis and basis[key + '_json'] != archived:
+                    raise WorkspaceServiceError('INTEGRITY_ERROR', '原创改编上下文归档不一致')
+                basis[key + '_json'] = archived
+    if isinstance(result.get('previous'), dict):
+        result['previous'] = _archive_original_context(result['previous'])
+    return result

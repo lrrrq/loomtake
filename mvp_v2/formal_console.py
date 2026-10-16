@@ -81,6 +81,7 @@ class TemplateTrialPayload(TemplateActionPayload):
 class BriefActionPayload(StrictWritePayload):
     brief_version_id: str = Field(min_length=1, max_length=128)
     expected_project_version: int = Field(ge=0)
+    workbench_task_id: Optional[str] = Field(default=None, min_length=8, max_length=160)
 
 
 class ConflictResolutionPayload(BriefActionPayload):
@@ -98,11 +99,18 @@ class BriefFieldUpdatePayload(BriefActionPayload):
 
 class PlanActionPayload(StrictWritePayload):
     expected_project_version: int = Field(ge=0)
+    workbench_task_id: Optional[str] = Field(default=None, min_length=8, max_length=160)
     # 业务服务在完成 Brief、创作标准、项目锁和图片理解检查后强制要求该值。
     # 这里允许缺省仅为避免 FastAPI 422 提前遮蔽更高优先级的权威门禁。
     generation_mode: Optional[Literal["image_backed", "text_only_draft"]] = None
     revision_task_id: Optional[str] = Field(default=None, min_length=8, max_length=160)
     expected_creative_revision: StrictInt | None = Field(default=None, ge=0)
+
+
+class ImageAnalysisBatchPayload(StrictWritePayload):
+    expected_project_version: int = Field(ge=0)
+    idempotency_key: str = Field(min_length=8, max_length=160)
+    agent_session_id: Optional[str] = None
 
 
 class ImageCreationPayload(StrictWritePayload):
@@ -118,6 +126,8 @@ class ImageCreationPayload(StrictWritePayload):
     reference_image_ids: list[StrictStr] = Field(default_factory=list, max_length=14)
     reference_task_ids: list[StrictStr] = Field(default_factory=list, max_length=14)
     expected_prompt_sha256: StrictStr | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    workbench_task_id: StrictStr | None = Field(default=None, min_length=8, max_length=160)
+    workbench_action_index: StrictInt | None = Field(default=None, ge=0)
 
 
 class ImagePromptPayload(StrictWritePayload):
@@ -1283,6 +1293,13 @@ def install_formal_routes(
             require_project_scope(verified, workspace_id=workspace_id, project_id=project_id, write=True)
             adapter, _ = require_adapter()
             confirmed = adapter.confirm(verified, workspace_id=workspace_id, project_id=project_id, brief_version_id=payload.brief_version_id, confirmed_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), expected_project_version=payload.expected_project_version)
+            if payload.workbench_task_id:
+                try:
+                    confirmed['handoff_receipt'] = agent_api.record_workbench_handoff(verified,
+                        payload.workbench_task_id, project_id=project_id, kind='brief',
+                        result={**confirmed, 'brief_version_id': payload.brief_version_id})
+                except Exception:
+                    confirmed['handoff_warning'] = '需求已确认成功，但编导续办回执未保存。请返回原会话重新读取进展。'
             return confirmed
         except (FormalBriefDomainError, WorkspaceServiceError) as exc:
             raise failure(exc) from exc
@@ -1603,6 +1620,50 @@ def install_formal_routes(
                 project_id=project_id,
                 expected_project_version=payload.expected_project_version,
             )
+        except (FormalBriefDomainError, WorkspaceServiceError) as exc:
+            raise failure(exc) from exc
+
+    @app.get('/api/formal/projects/{project_id}/images/analysis-batches')
+    def read_image_analysis_batch(project_id: str, workspace_id: str, task_id: str | None = None,
+            auth_token: str = Header(default='', alias='X-MPlus-Agent-Auth')) -> dict:
+        try:
+            verified = token(auth_token)
+            require_project_scope(verified, workspace_id=workspace_id, project_id=project_id)
+            return require_generation().read_image_analysis_batch(verified, workspace_id=workspace_id,
+                project_id=project_id, task_id=task_id)
+        except (FormalBriefDomainError, WorkspaceServiceError) as exc:
+            raise failure(exc) from exc
+
+    @app.post('/api/formal/projects/{project_id}/images/analysis-batches')
+    def start_image_analysis_batch(project_id: str, workspace_id: str, payload: ImageAnalysisBatchPayload,
+            background_tasks: BackgroundTasks,
+            auth_token: str = Header(default='', alias='X-MPlus-Agent-Auth')) -> dict:
+        try:
+            verified = token(auth_token)
+            require_project_scope(verified, workspace_id=workspace_id, project_id=project_id, write=True)
+            service = require_generation()
+            result = service.start_image_analysis_batch(verified, workspace_id=workspace_id,
+                project_id=project_id, **payload.model_dump())
+            if result['task']['status'] == 'executing':
+                background_tasks.add_task(service.execute_image_analysis_batch, verified, task_id=result['task']['task_id'])
+            return result
+        except (FormalBriefDomainError, WorkspaceServiceError) as exc:
+            raise failure(exc) from exc
+
+    @app.post('/api/formal/projects/{project_id}/images/analysis-batches/{task_id}/{action}')
+    def control_image_analysis_batch(project_id: str, workspace_id: str, task_id: str,
+            action: Literal['pause', 'resume'], background_tasks: BackgroundTasks,
+            auth_token: str = Header(default='', alias='X-MPlus-Agent-Auth')) -> dict:
+        try:
+            verified = token(auth_token)
+            require_project_scope(verified, workspace_id=workspace_id, project_id=project_id, write=True)
+            service = require_generation()
+            service.read_image_analysis_batch(verified, workspace_id=workspace_id, project_id=project_id, task_id=task_id)
+            result = (service.pause_image_analysis_batch if action == 'pause'
+                else service.resume_image_analysis_batch)(verified, task_id=task_id)
+            if action == 'resume' and result['task']['status'] == 'executing':
+                background_tasks.add_task(service.execute_image_analysis_batch, verified, task_id=task_id)
+            return result
         except (FormalBriefDomainError, WorkspaceServiceError) as exc:
             raise failure(exc) from exc
 
@@ -2331,13 +2392,20 @@ def install_formal_routes(
             verified = token(auth_token)
             require_project_scope(verified, workspace_id=workspace_id, project_id=project_id, write=True)
             service = require_generation()
-            return employee_completion(service.confirm_plan_and_generate(
+            confirmed = employee_completion(service.confirm_plan_and_generate(
                 verified,
                 workspace_id=workspace_id,
                 project_id=project_id,
                 plan_id=plan_id,
                 expected_project_version=payload.expected_project_version,
             ))
+            if payload.workbench_task_id:
+                try:
+                    confirmed['handoff_receipt'] = agent_api.record_workbench_handoff(verified,
+                        payload.workbench_task_id, project_id=project_id, kind='plan', result=confirmed)
+                except Exception:
+                    confirmed['handoff_warning'] = '正式版本已生成，但编导续办回执未保存。请返回原会话重新读取进展。'
+            return confirmed
         except (FormalBriefDomainError, WorkspaceServiceError) as exc:
             raise failure(exc) from exc
 
@@ -2389,6 +2457,7 @@ def install_formal_routes(
             )
         except WorkspaceServiceError as exc:
             raise failure(exc) from exc
+
 
     @app.put("/api/formal/projects/{project_id}/script/assistant-locks")
     def set_script_assistant_locks(project_id: str, payload: ScriptAssistantLocksPayload, workspace_id: str, auth_token: str = Header(default="", alias="X-MPlus-Agent-Auth")) -> dict:

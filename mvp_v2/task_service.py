@@ -77,6 +77,7 @@ EMPLOYEE_TASK_LABELS = {
 }
 
 EMPLOYEE_TASK_TYPES = {
+    "formal_image_analysis": "素材分析",
     "formal_creative_draft": "创意初稿",
     "formal_image_creation": "图片生成",
     "formal_review_revision": "审核意见修改",
@@ -98,6 +99,7 @@ EMPLOYEE_TASK_TYPES = {
 }
 
 EMPLOYEE_COMPLETED_TASKS = {
+    "formal_image_analysis": ("查看素材", "materials", "本批素材分析已保存，请核对用途与待处理项"),
     "formal_generation": (
         "查看脚本", "script", "脚本版本已生成并保存在当前项目",
     ),
@@ -206,6 +208,16 @@ class TaskService:
             "failed": "请联系管理员查看失败原因",
             "cancelled": "如仍需执行，请重新创建规划",
         }
+        if task_type == 'formal_image_analysis':
+            action_section = 'materials'
+            action_label = {'waiting_user': '继续素材分析',
+                'partially_completed': '查看待处理图片', 'executing': '查看分析进度'}.get(status, '查看素材')
+            next_actions.update(executing='正在处理本批图片，可回到素材页查看或暂停',
+                waiting_user='本批已暂停，已完成结果保留；回到素材页继续原批次',
+                partially_completed='成功项已保存，回到素材页核对失败或结果未知项',
+                failed='回到素材页读取原批次结果或人工处理',
+                blocked='回到素材页处理当前需求或图片身份变化',
+                cancelled='已保存结果保留，请回到素材页核对')
         title = EMPLOYEE_TASK_TYPES.get(task_type) or "项目任务"
         return {
             "title": title,
@@ -283,7 +295,93 @@ class TaskService:
                 raise WorkspaceServiceError("PERMISSION_DENIED", "不能读取其他操作者的 agent session")
             result = row_dict(row)
         result.pop("workspace_id", None)
+        result['archived'] = bool(result.get('archived'))
+        result['selected_source_ids'] = json.loads(result.pop('selected_source_ids_json', None) or 'null')
+        result.pop('summary_json', None)
         return result
+
+    def list_agent_sessions(self, auth_token: str, project_id: str, *, q: str = '',
+                            include_archived: bool = False) -> list[dict]:
+        """List only the current actor's conversations, including historical ones."""
+        with self.store.connection() as connection:
+            project = _project(connection, project_id)
+            actor = require_permission(connection, auth_token, workspace_id=project['workspace_id'],
+                project_id=project_id, permission='project.read')
+            rows = connection.execute('''SELECT s.*, (SELECT COUNT(*) FROM tasks t
+                WHERE t.agent_session_id=s.agent_session_id) AS task_count FROM agent_sessions s
+                WHERE s.project_id=? AND s.actor_id=? AND (? OR s.archived=0)
+                ORDER BY s.updated_at DESC, s.rowid DESC''',
+                (project_id, actor['actor_id'], int(include_archived))).fetchall()
+            result = []
+            needle = q.strip().casefold()
+            for row in rows:
+                item = dict(row)
+                if needle and needle not in item['title'].casefold():
+                    events = connection.execute('''SELECT e.details_json FROM tasks t JOIN task_events e
+                        ON e.task_id=t.task_id WHERE t.agent_session_id=?''', (item['agent_session_id'],))
+                    def contains_text(value):
+                        if isinstance(value, str):
+                            return needle in value.casefold()
+                        if isinstance(value, dict):
+                            return any(contains_text(item) for item in value.values())
+                        if isinstance(value, list):
+                            return any(contains_text(item) for item in value)
+                        return False
+                    if not any(contains_text(json.loads(event[0])) for event in events):
+                        continue
+                item['archived'] = bool(item['archived'])
+                item['selected_source_ids'] = json.loads(item.pop('selected_source_ids_json') or 'null')
+                item.pop('summary_json', None)
+                result.append(item)
+        return result
+
+    def update_agent_session(self, auth_token: str, agent_session_id: str, *,
+                             expected_metadata_revision: int | None = None, **changes) -> dict:
+        allowed = {'title', 'archived', 'draft_content', 'selected_source_ids'}
+        if set(changes) - allowed:
+            raise WorkspaceServiceError('INVALID_INPUT', '会话设置包含未知字段')
+        with self.store.atomic() as connection:
+            session = self.get_agent_session(auth_token, agent_session_id)
+            if session['archived'] and changes.get('archived') is not False and \
+                    {'draft_content', 'selected_source_ids'} & set(changes):
+                raise WorkspaceServiceError('SESSION_ARCHIVED', '会话已归档，请恢复后再继续编辑输入或引用')
+            if expected_metadata_revision is not None:
+                check_version(session['metadata_revision'], expected_metadata_revision, 'SESSION_VERSION_CONFLICT')
+            updates, values = [], []
+            for key, value in changes.items():
+                if key == 'archived':
+                    if not isinstance(value, bool):
+                        raise WorkspaceServiceError('INVALID_INPUT', '会话归档状态无效')
+                    value = int(value)
+                elif key == 'selected_source_ids':
+                    if value is not None and (not isinstance(value, list) or len(value) > 200 or
+                            any(not isinstance(item, str) or len(item) > 200 for item in value)):
+                        raise WorkspaceServiceError('INVALID_INPUT', '引用资料选择无效')
+                    key, value = 'selected_source_ids_json', json.dumps(value, ensure_ascii=False)
+                else:
+                    limit = 120 if key == 'title' else 16000
+                    if not isinstance(value, str) or len(value) > limit:
+                        raise WorkspaceServiceError('INVALID_INPUT', '会话内容过长或格式无效')
+                    if key == 'title':
+                        value = value.strip()
+                updates.append(key + '=?')
+                values.append(value)
+            if updates:
+                connection.execute('UPDATE agent_sessions SET ' + ','.join(updates) +
+                    ', metadata_revision=metadata_revision+1, updated_at=? WHERE agent_session_id=?',
+                    (*values, utc_now(), agent_session_id))
+        return self.get_agent_session(auth_token, agent_session_id)
+
+    def conversation_summary(self, auth_token: str, agent_session_id: str, *, value: dict | None = None) -> dict:
+        """Disposable source-bound summary cache; raw task events remain authoritative."""
+        with self.store.atomic() as connection:
+            self.get_agent_session(auth_token, agent_session_id)
+            if value is not None:
+                connection.execute('UPDATE agent_sessions SET summary_json=? WHERE agent_session_id=?',
+                    (json.dumps(value, ensure_ascii=False), agent_session_id))
+            row = connection.execute('SELECT summary_json FROM agent_sessions WHERE agent_session_id=?',
+                (agent_session_id,)).fetchone()
+        return json.loads(row[0])
 
     def create_task(
         self,
@@ -322,6 +420,8 @@ class TaskService:
             )
             if actor["actor_id"] != session["actor_id"]:
                 raise WorkspaceServiceError("PERMISSION_DENIED", "不能在其他操作者会话中创建 task")
+            if session['archived']:
+                raise WorkspaceServiceError('SESSION_ARCHIVED', '会话已归档，请恢复会话或新建会话后继续')
             check_version(
                 session["project_version"],
                 expected_project_version,
@@ -903,7 +1003,21 @@ class TaskService:
         task_id: str,
         *,
         after_sequence: int = 0,
+        latest_with_detail: str | None = None,
+        first_with_detail: str | None = None,
+        detail_paths: tuple[str, ...] | None = None,
     ) -> list[dict]:
+        if any(key is not None and (not isinstance(key, str) or not key.isidentifier())
+               for key in (latest_with_detail, first_with_detail)):
+            raise WorkspaceServiceError("INVALID_INPUT", "event detail key 无效")
+        if latest_with_detail is not None and first_with_detail is not None:
+            raise WorkspaceServiceError("INVALID_INPUT", "event detail 顺序只能选择一个")
+        if detail_paths is not None and (
+            not isinstance(detail_paths, tuple) or not detail_paths
+            or any(not isinstance(path, str) or not all(part.isidentifier() for part in path.split('.'))
+                   for path in detail_paths)
+        ):
+            raise WorkspaceServiceError("INVALID_INPUT", "event detail projection 无效")
         with self.store.connection() as connection:
             task = connection.execute(
                 """
@@ -924,17 +1038,56 @@ class TaskService:
             )
             if actor["actor_id"] != task["actor_id"]:
                 raise WorkspaceServiceError("PERMISSION_DENIED", "不能读取其他操作者的 task")
-            rows = connection.execute(
-                """
-                SELECT * FROM task_events
-                WHERE task_id = ? AND sequence_no > ?
-                ORDER BY sequence_no
-                """,
-                (task_id, after_sequence),
-            ).fetchall()
+            columns = '*'
+            projection_parameters = ()
+            if detail_paths is not None:
+                # Conversation reads do not need repeated retrieval snapshots.
+                # Project inside SQLite so unused payloads never enter Python.
+                columns = ('task_event_id, task_id, sequence_no, status, created_at, '
+                    'json_array(' + ','.join('json_array(json_type(details_json, ?), json_extract(details_json, ?))'
+                                            for _ in detail_paths) + ') AS projected_details_json')
+                projection_parameters = tuple(value for path in detail_paths
+                    for value in ('$.' + '.'.join('"' + part + '"' for part in path.split('.')),)*2)
+            if latest_with_detail is None and first_with_detail is None:
+                rows = connection.execute(
+                    f"""
+                    SELECT {columns} FROM task_events
+                    WHERE task_id = ? AND sequence_no > ?
+                    ORDER BY sequence_no
+                    """,
+                    (*projection_parameters, task_id, after_sequence),
+                ).fetchall()
+            else:
+                # Progress snapshots can contain many image candidates. Read
+                # the current snapshot without decoding all prior snapshots.
+                detail_path = '$."' + (latest_with_detail or first_with_detail) + '"'
+                types = "('object')" if latest_with_detail else "('object','text')"
+                order = 'DESC' if latest_with_detail else 'ASC'
+                rows = connection.execute(
+                    f"""SELECT {columns} FROM task_events
+                    WHERE task_id = ? AND sequence_no > ?
+                      AND json_type(details_json, ?) IN {types}
+                      AND json_extract(details_json, ?) NOT IN ('{{}}','')
+                    ORDER BY sequence_no {order} LIMIT 1""",
+                    (*projection_parameters, task_id, after_sequence, detail_path, detail_path),
+                ).fetchall()
         result = []
         for row in rows:
             item = row_dict(row)
-            item["details"] = json.loads(item.pop("details_json"))
+            if detail_paths is None:
+                item["details"] = json.loads(item.pop("details_json"))
+            else:
+                values = json.loads(item.pop('projected_details_json'))
+                item['details'] = {}
+                for path, (kind, value) in zip(detail_paths, values):
+                    if kind is None:
+                        continue
+                    if kind in {'true', 'false'}:
+                        value = kind == 'true'
+                    target = item['details']
+                    parts = path.split('.')
+                    for part in parts[:-1]:
+                        target = target.setdefault(part, {})
+                    target[parts[-1]] = value
             result.append(item)
         return result

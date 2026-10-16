@@ -7,7 +7,7 @@
     {"prefix": "mplus/packages/", "kind": "production_package", "expire_days": null},
     {"prefix": "mplus/legacy/", "kind": "selected_history", "expire_days": null}
   ],
-  "database": {"rpo_hours": 24, "rto_hours": 4},
+  "database": {"rpo_hours": 0.25, "rto_hours": 2},
   "capacity": {
     "max_concurrent_runs": 2,
     "max_input_file_bytes": 524288000,

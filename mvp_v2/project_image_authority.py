@@ -7,7 +7,7 @@ paths, artifact references, or content hashes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from hashlib import sha256
 import json
@@ -970,6 +970,94 @@ class ProjectImagePoolService:
             _confirmed_brief_context(connection, workspace_id, project_id, brief_version_id, brief_snapshot_id, expected_project_lock_version, require_current=not historical)
         return preview
 
+    def reuse_analysis_for_current_brief(
+        self, auth_token: str, *, workspace_id: str, project_id: str,
+        image_id: str, image_sha256: str, brief_version_id: str,
+        brief_snapshot_id: str, expected_project_lock_version: int,
+    ) -> ProjectImageAnalysis | None:
+        """Reuse a verified same-image observation; never inherit an old approval."""
+        with self.store.atomic() as connection:
+            _project_and_actor(connection, auth_token, workspace_id, project_id, "review.record")
+            _confirmed_brief_context(connection, workspace_id, project_id,
+                brief_version_id, brief_snapshot_id, expected_project_lock_version)
+            image = next((item for item in self._read_images(connection, workspace_id,
+                project_id, brief_version_id, brief_snapshot_id) if item['image_id'] == image_id), None)
+            if image is None or image['image_sha256'] != image_sha256:
+                raise WorkspaceServiceError('IMAGE_ARTIFACT_DRIFT', '复用观察的图片身份已变化')
+            if image['analysis'] is not None:
+                return image['analysis']
+            row = connection.execute('''SELECT a.* FROM project_image_analysis_current_links l
+                JOIN project_image_analysis_versions a ON a.project_image_analysis_version_id=l.project_image_analysis_version_id
+                WHERE l.project_image_id=?''', (image_id,)).fetchone()
+            if row is None or row['image_sha256'] != image_sha256:
+                return None
+            prior = ProjectImageAnalysis(str(row['project_image_analysis_version_id']), str(row['status']),
+                ArtifactEvidence(str(row['artifact_ref']), str(row['artifact_sha256'])),
+                str(row['created_by_actor_id']), str(row['created_at']))
+            value = self.artifacts.read_analysis(prior.evidence)
+            content = self.artifacts.read_source_image(ArtifactEvidence(image['artifact_ref'], image_sha256))
+            _validate_analysis_payload(value, image, workspace_id, project_id,
+                str(row['brief_version_id']), str(row['brief_snapshot_id']), prior, content)
+            if prior.status == 'failed' or value.get('visual_analysis_available') is False:
+                return None
+            source = {'kind': 'analysis', 'analysis_key': prior.analysis_version_id,
+                'artifact_ref': prior.evidence.ref, 'artifact_sha256': prior.evidence.sha256,
+                'brief_version_id': str(row['brief_version_id']),
+                'brief_snapshot_id': str(row['brief_snapshot_id'])}
+            return self._record_reused_observation(auth_token, workspace_id=workspace_id,
+                project_id=project_id, image_id=image_id, image_sha256=image_sha256,
+                brief_version_id=brief_version_id, brief_snapshot_id=brief_snapshot_id,
+                expected_project_lock_version=expected_project_lock_version, value=value, source=source)
+
+    def _record_reused_observation(self, auth_token: str, *, workspace_id: str, project_id: str,
+            image_id: str, image_sha256: str, brief_version_id: str, brief_snapshot_id: str,
+            expected_project_lock_version: int, value: dict, source: dict) -> ProjectImageAnalysis:
+        batch = None
+        try:
+            with self.store.transaction() as connection:
+                _project_and_actor(connection, auth_token, workspace_id, project_id, 'review.record')
+                _confirmed_brief_context(connection, workspace_id, project_id,
+                    brief_version_id, brief_snapshot_id, expected_project_lock_version)
+                image = connection.execute('SELECT * FROM project_images WHERE project_image_id=? AND workspace_id=? AND project_id=?',
+                    (image_id, workspace_id, project_id)).fetchone()
+                if image is None or image['image_sha256'] != image_sha256:
+                    raise WorkspaceServiceError('IMAGE_ARTIFACT_DRIFT', '原观察与当前图片身份不一致')
+                current = connection.execute('''SELECT a.* FROM project_image_analysis_current_links l
+                    JOIN project_image_analysis_versions a ON a.project_image_analysis_version_id=l.project_image_analysis_version_id
+                    WHERE l.project_image_id=?''', (image_id,)).fetchone()
+                if current and current['brief_version_id'] == brief_version_id and current['brief_snapshot_id'] == brief_snapshot_id:
+                    return ProjectImageAnalysis(str(current['project_image_analysis_version_id']), str(current['status']),
+                        ArtifactEvidence(str(current['artifact_ref']), str(current['artifact_sha256'])),
+                        str(current['created_by_actor_id']), str(current['created_at']))
+                content = self.artifacts.read_source_image(ArtifactEvidence(str(image['artifact_ref']), image_sha256))
+                actor_id, created_at = _actor_id(connection, auth_token), utc_now()
+                status = 'blocked' if value['status'] == 'blocked' else 'low_confidence'
+                payload = {key: value[key] for key in ('caption', 'tags', 'subjects', 'scene', 'quality', 'brand', 'evidence')}
+                original_purpose = value.get('original_purpose', value['purpose'])
+                payload.update(schema_version='mplus-project-image-analysis/v5', analysis_origin='reused_observation',
+                    workspace_id=workspace_id, project_id=project_id, project_image_id=image_id,
+                    image_sha256=image_sha256, brief_version_id=brief_version_id, brief_snapshot_id=brief_snapshot_id,
+                    status=status, purpose='用途待按当前需求核对；原分析参考：' + original_purpose,
+                    original_purpose=original_purpose, quality_flags=list(value.get('quality_flags', [])),
+                    negative_flags=list(value.get('negative_flags', [])), visual_observations=_visual_observations(value.get('visual_observations', {})),
+                    rebound_by_actor_id=actor_id, rebound_at=created_at, observation_source=source,
+                    **project_image_pixel_evidence(content))
+                batch = self.artifacts.stage_analysis(payload)
+                analysis_id = new_id('project_image_analysis')
+                connection.execute('INSERT INTO project_image_analysis_versions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    (analysis_id, image_id, workspace_id, project_id, brief_version_id, brief_snapshot_id,
+                     image_sha256, status, batch.evidence.ref, batch.evidence.sha256, actor_id, created_at))
+                connection.execute('''INSERT INTO project_image_analysis_current_links VALUES (?, ?, ?)
+                    ON CONFLICT(project_image_id) DO UPDATE SET project_image_analysis_version_id=excluded.project_image_analysis_version_id, updated_at=excluded.updated_at''',
+                    (image_id, analysis_id, created_at))
+                batch.promote()
+        except Exception:
+            if batch is not None:
+                batch.rollback()
+            raise
+        batch.commit()
+        return ProjectImageAnalysis(analysis_id, status, batch.evidence, actor_id, created_at)
+
     def resolve_pending_for_provider(
         self, auth_token: str, *, workspace_id: str, project_id: str,
         brief_version_id: str, brief_snapshot_id: str,
@@ -1351,6 +1439,55 @@ class ProviderProjectImageAnalysisCommandService:
     def __init__(self, pool: ProjectImagePoolService):
         self.pool = pool
 
+    def record_returned_analysis(self, auth_token: str, *, workspace_id: str, project_id: str,
+            submission: ProviderImageAnalysisInput, expected_project_lock_version: int,
+            observation_brief_version_id: str, observation_brief_snapshot_id: str,
+            source_task_id: str) -> ProjectImageAnalysis:
+        """Commit only the exact durable return of this actor's image-analysis task."""
+        if not isinstance(submission, ProviderImageAnalysisInput):
+            raise TypeError('自动图片分析只接受 ProviderImageAnalysisInput')
+        expected = asdict(submission)
+        result = {key: expected[key] for key in ('status', 'caption', 'tags', 'subjects',
+            'scene', 'purpose', 'quality', 'brand', 'evidence', 'quality_flags', 'negative_flags', 'visual_observations')}
+        receipt = {'result': result, 'provider': submission.provider, 'model': submission.model,
+            'prompt_version': submission.prompt_version, 'brief_version_id': observation_brief_version_id,
+            'brief_snapshot_id': observation_brief_snapshot_id}
+        normalized = json.loads(json.dumps(receipt, ensure_ascii=False))
+        with self.pool.store.atomic() as connection:
+            _project_and_actor(connection, auth_token, workspace_id, project_id, 'review.record')
+            task = connection.execute('SELECT * FROM tasks WHERE task_id=?', (source_task_id,)).fetchone()
+            if (task is None or task['project_id'] != project_id
+                    or task['actor_id'] != _actor_id(connection, auth_token)
+                    or task['task_type'] != 'formal_image_analysis'):
+                raise WorkspaceServiceError('CROSS_PROJECT_DENIED', '原分析回执不属于当前任务身份')
+            rows = connection.execute('SELECT details_json FROM task_events WHERE task_id=? ORDER BY sequence_no DESC',
+                (source_task_id,)).fetchall()
+            found = False
+            for row in rows:
+                data = json.loads(row['details_json']).get('image_analysis_batch', {})
+                if data.get('workspace_id') != workspace_id or data.get('project_id') != project_id:
+                    continue
+                if any(item.get('image_key') == submission.image_id and item.get('image_sha256') == submission.image_sha256
+                       and item.get('receipt') == normalized for item in data.get('items', [])):
+                    found = True
+                    break
+            if not found:
+                raise WorkspaceServiceError('IMAGE_ANALYSIS_RECEIPT_MISMATCH', '原分析返回尚未落盘或与本次写入不一致')
+            if (submission.brief_version_id, submission.brief_snapshot_id) == (
+                    observation_brief_version_id, observation_brief_snapshot_id):
+                return self.record_analysis(auth_token, workspace_id=workspace_id, project_id=project_id,
+                    submission=submission, expected_project_lock_version=expected_project_lock_version)
+            from .run_contract import sha256_json
+            return self.pool._record_reused_observation(auth_token, workspace_id=workspace_id,
+                project_id=project_id, image_id=submission.image_id, image_sha256=submission.image_sha256,
+                brief_version_id=submission.brief_version_id, brief_snapshot_id=submission.brief_snapshot_id,
+                expected_project_lock_version=expected_project_lock_version, value=json.loads(json.dumps(result)),
+                source={'kind': 'task_return', 'task_id': source_task_id,
+                    'receipt_sha256': sha256_json(normalized), 'provider': submission.provider,
+                    'model': submission.model, 'prompt_version': submission.prompt_version,
+                    'brief_version_id': observation_brief_version_id,
+                    'brief_snapshot_id': observation_brief_snapshot_id})
+
     def record_analysis(
         self, auth_token: str, *, workspace_id: str, project_id: str,
         submission: ProviderImageAnalysisInput, expected_project_lock_version: int,
@@ -1598,6 +1735,8 @@ def _validate_analysis_payload(
         "visual_observations", "package_id", "package_version", "media_id",
         "selected_by_actor_id", "selected_at", "source_semantic_text", "visual_analysis_available",
     }
+    v5_reused = v3_common | {'visual_observations', 'original_purpose',
+        'rebound_by_actor_id', 'rebound_at', 'observation_source'}
     if (
         (schema_version == "mplus-project-image-analysis/v1" and payload_fields != manual)
         or (schema_version == "mplus-project-image-analysis/v2" and payload_fields != provider)
@@ -1617,9 +1756,11 @@ def _validate_analysis_payload(
                 or value.get("analysis_origin") not in {"provider", "source_reference"}
             )
         )
+        or (schema_version == 'mplus-project-image-analysis/v5' and (
+            value.get('analysis_origin') != 'reused_observation' or payload_fields != v5_reused))
         or schema_version not in {
             "mplus-project-image-analysis/v1", "mplus-project-image-analysis/v2",
-            "mplus-project-image-analysis/v3", "mplus-project-image-analysis/v4",
+            "mplus-project-image-analysis/v3", "mplus-project-image-analysis/v4", 'mplus-project-image-analysis/v5',
         }
     ):
         raise WorkspaceServiceError("IMAGE_ANALYSIS_ARTIFACT_DRIFT", "图片分析 artifact 字段无效")
@@ -1629,7 +1770,25 @@ def _validate_analysis_payload(
         raise WorkspaceServiceError("IMAGE_ANALYSIS_ARTIFACT_DRIFT", "图片分析 artifact 图片绑定漂移")
     if value.get("brief_version_id") != brief_version_id or value.get("brief_snapshot_id") != brief_snapshot_id or value.get("status") != analysis.status:
         raise WorkspaceServiceError("IMAGE_ANALYSIS_ARTIFACT_DRIFT", "图片分析 artifact Brief 绑定漂移")
-    if value.get("analysis_origin") == "source_reference":
+    if value.get('analysis_origin') == 'reused_observation':
+        source = value.get('observation_source')
+        common_source = {'kind', 'brief_version_id', 'brief_snapshot_id'}
+        source_fields = {'analysis': common_source | {'analysis_key', 'artifact_ref', 'artifact_sha256'},
+            'task_return': common_source | {'task_id', 'receipt_sha256', 'provider', 'model', 'prompt_version'}}
+        if (not isinstance(source, dict) or set(source) != source_fields.get(source.get('kind'), set())
+                or not all(isinstance(item, str) and item for item in source.values())
+                or value.get('rebound_by_actor_id') != analysis.created_by_actor_id
+                or value.get('rebound_at') != analysis.created_at or not _utc_timestamp(value.get('rebound_at'))
+                or value.get('status') not in {'low_confidence', 'blocked'}
+                or not isinstance(value.get('original_purpose'), str) or not value['original_purpose']
+                or value.get('purpose') != '用途待按当前需求核对；原分析参考：' + value['original_purpose']):
+            raise WorkspaceServiceError('IMAGE_ANALYSIS_ARTIFACT_DRIFT', '复用观察的原证据或当前需求用途绑定无效')
+        if source['kind'] == 'analysis':
+            ArtifactEvidence(source['artifact_ref'], source['artifact_sha256'])
+        else:
+            require_sha256(source['receipt_sha256'], 'receipt_sha256')
+        evidence_status = 'reused_observation'
+    elif value.get("analysis_origin") == "source_reference":
         source_id = f"package:{value.get('package_id')}@{value.get('package_version')}:{value.get('media_id')}"
         if (
             type(value.get("package_version")) is not int or value["package_version"] < 1
@@ -1672,7 +1831,7 @@ def _validate_analysis_payload(
     tags = _analysis_strings(value.get("tags"), "tags")
     subjects = _analysis_strings(value.get("subjects"), "subjects")
     _analysis_strings(value.get("evidence"), "evidence")
-    if schema_version in {"mplus-project-image-analysis/v3", "mplus-project-image-analysis/v4"}:
+    if schema_version in {"mplus-project-image-analysis/v3", "mplus-project-image-analysis/v4", 'mplus-project-image-analysis/v5'}:
         if (
             type(value.get("pixel_width")) is not int
             or type(value.get("pixel_height")) is not int

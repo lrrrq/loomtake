@@ -17,7 +17,8 @@ from .runtime_config import configured_source_commit
 from .workspace_store import _MIGRATIONS
 
 
-SCHEMA_VERSION = "mplus-cloud-data-snapshot/v1"
+SCHEMA_VERSION = "mplus-cloud-data-snapshot/v2"
+LEGACY_SCHEMA_VERSION = "mplus-cloud-data-snapshot/v1"
 MANIFEST_NAME = "migration-manifest.json"
 DATA_PREFIX = "data"
 _DATABASE_NAME = "workspace.sqlite3"
@@ -225,12 +226,18 @@ def restore_cloud_snapshot(
                         f"恢复文件完整性校验失败: {record['path']}"
                     )
                 os.chmod(destination, int(record["mode"], 8))
+                if "mtime_ns" in record:
+                    os.utime(destination, ns=(destination.stat().st_atime_ns, record["mtime_ns"]))
         source_relative = _safe_dependency_relative(manifest["source_root_relative"])
         if source_relative != ".":
             staging.joinpath(*PurePosixPath(source_relative).parts).mkdir(
                 parents=True,
                 exist_ok=True,
             )
+        legacy_metadata = (
+            _restore_legacy_package_timestamps(staging, manifest)
+            if manifest["schema_version"] == LEGACY_SCHEMA_VERSION else None
+        )
         restored = validate_data_root(staging)
         if restored["database"] != verification["database"]:
             raise CloudMigrationError("恢复数据库统计与源快照不一致")
@@ -247,10 +254,59 @@ def restore_cloud_snapshot(
             ],
             "bound_runs": restored["bound_runs"],
             "provider_secrets_restored": False,
+            **({"legacy_package_metadata": legacy_metadata} if legacy_metadata is not None else {}),
         }
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
+
+
+def _restore_legacy_package_timestamps(root: Path, manifest: dict) -> dict:
+    """Recover v1's missing metadata only from matching frozen package evidence.
+
+    Never rewrite package contents or follow a source outside the extracted
+    snapshot. Unprovable timestamps remain explicit warnings, not guesses.
+    """
+    from .asset_package import SUPPORTED_PACKAGE_SCHEMA_VERSIONS, load_asset_package
+
+    files = {record["path"]: record for record in manifest["files"]}
+    candidates = set(manifest["asset_packages_relative"])
+    candidates.update(name for name in files if PurePosixPath(name).name == "asset_package.json")
+    timestamps: dict[str, set[int]] = {}
+    warnings = []
+    for name in sorted(candidates):
+        try:
+            payload = json.loads((root / name).read_text(encoding="utf-8"))
+            if not isinstance(payload, dict) or payload.get("schema_version") not in SUPPORTED_PACKAGE_SCHEMA_VERSIONS:
+                continue
+            # A copied editable library is not an immutable dependency. Only
+            # explicitly declared packages or published versions participate.
+            if name not in manifest["asset_packages_relative"] and (
+                    type(payload.get("package_version")) is not int or payload["package_version"] < 1):
+                continue
+            package = load_asset_package(root / name)
+            workbook = package["source_workbook_path"]
+            relative = workbook.relative_to(root).as_posix()
+            record = files.get(relative)
+            timestamp = package.get("source_workbook_mtime_ns")
+            if (record is None or type(timestamp) is not int or not 0 <= timestamp <= 2**63 - 1
+                    or record["sha256"] != package.get("source_workbook_sha256")
+                    or record["size_bytes"] != package.get("source_workbook_size")
+                    or _sha256_file(workbook) != record["sha256"]):
+                raise ValueError("冻结来源大小、SHA或修改时间依据不完整")
+            timestamps.setdefault(relative, set()).add(timestamp)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            warnings.append({"package": name, "reason": str(exc)})
+    restored = []
+    for relative, values in sorted(timestamps.items()):
+        if len(values) != 1:
+            warnings.append({"source": relative, "reason": "多个冻结包的来源修改时间冲突，未修改"})
+            continue
+        path = root / relative
+        timestamp = next(iter(values))
+        os.utime(path, ns=(path.stat().st_atime_ns, timestamp))
+        restored.append(relative)
+    return {"restored_sources": restored, "warnings": warnings}
 
 
 def validate_data_root(data_root: str | Path) -> dict:
@@ -342,7 +398,7 @@ def _backup_database(source: Path, destination: Path) -> None:
         raise CloudMigrationError("workspace.sqlite3 在线备份失败") from exc
 
 
-def _source_records(root: Path) -> dict[str, tuple[int, str, int]]:
+def _source_records(root: Path) -> dict[str, tuple[int, str, int, int]]:
     records = {}
     for path in sorted(root.rglob("*")):
         if _skip_source_path(root, path):
@@ -354,21 +410,23 @@ def _source_records(root: Path) -> dict[str, tuple[int, str, int]]:
         if not path.is_file():
             raise CloudMigrationError(f"data_root 含非普通文件: {path.relative_to(root)}")
         relative = path.relative_to(root).as_posix()
-        records[relative] = (path.stat().st_size, _sha256_file(path), stat.S_IMODE(path.stat().st_mode))
+        metadata = path.stat()
+        records[relative] = (metadata.st_size, _sha256_file(path), stat.S_IMODE(metadata.st_mode), metadata.st_mtime_ns)
     return records
 
 
 def _copy_regular_files(
     source_root: Path,
     target_root: Path,
-    records: dict[str, tuple[int, str, int]],
+    records: dict[str, tuple[int, str, int, int]],
 ) -> None:
-    for relative, (size_bytes, digest, mode) in records.items():
+    for relative, (size_bytes, digest, mode, mtime_ns) in records.items():
         source = source_root / relative
         target = target_root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-        if target.stat().st_size != size_bytes or _sha256_file(target) != digest:
+        if (target.stat().st_size != size_bytes or _sha256_file(target) != digest
+                or target.stat().st_mtime_ns != mtime_ns):
             raise CloudMigrationError(f"复制后 SHA-256 不一致: {relative}")
         os.chmod(target, mode)
 
@@ -381,6 +439,7 @@ def _snapshot_records(root: Path) -> list[dict]:
             "size_bytes": path.stat().st_size,
             "sha256": _sha256_file(path),
             "mode": f"{stat.S_IMODE(path.stat().st_mode):04o}",
+            "mtime_ns": path.stat().st_mtime_ns,
         })
     return records
 
@@ -405,7 +464,7 @@ def _skip_source_path(root: Path, path: Path) -> bool:
 
 
 def _validate_manifest(manifest: dict) -> None:
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != SCHEMA_VERSION:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") not in {SCHEMA_VERSION, LEGACY_SCHEMA_VERSION}:
         raise CloudMigrationError("migration manifest schema 无效")
     expected_fields = {
         "schema_version",
@@ -448,9 +507,15 @@ def _validate_manifest(manifest: dict) -> None:
     if not isinstance(files, list) or not files:
         raise CloudMigrationError("migration manifest 文件清单为空")
     paths = []
+    record_fields = {"path", "size_bytes", "sha256", "mode"}
+    if manifest["schema_version"] == SCHEMA_VERSION:
+        record_fields.add("mtime_ns")
     for record in files:
-        if not isinstance(record, dict) or set(record) != {"path", "size_bytes", "sha256", "mode"}:
+        if not isinstance(record, dict) or set(record) != record_fields:
             raise CloudMigrationError("migration manifest 文件记录无效")
+        if "mtime_ns" in record and (type(record["mtime_ns"]) is not int
+                                     or not 0 <= record["mtime_ns"] <= 2**63 - 1):
+            raise CloudMigrationError("migration manifest 文件修改时间无效")
         relative = _safe_relative(record["path"]).as_posix()
         if relative != record["path"] or relative in paths:
             raise CloudMigrationError("migration manifest 路径重复或未规范化")

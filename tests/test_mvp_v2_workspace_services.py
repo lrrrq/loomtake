@@ -79,7 +79,7 @@ class WorkspaceServiceTests(unittest.TestCase):
         from unittest.mock import patch
         from mvp_v2 import workspace_store as schema
         old = WorkspaceStore(self.root / "old-v26.sqlite3")
-        with patch.object(schema, "_MIGRATIONS", schema._MIGRATIONS[:-1]):
+        with patch.object(schema, "_MIGRATIONS", tuple(item for item in schema._MIGRATIONS if item[0] <= 26)):
             old.initialize()
             owner = LocalIdentityAdapter(old).bootstrap_owner(workspace_name="匿名迁移",
                 display_name="匿名管理员", confirmed=True, token="migration-owner")
@@ -126,7 +126,7 @@ class WorkspaceServiceTests(unittest.TestCase):
                 )
             }
 
-        self.assertEqual([row[0] for row in migrations], list(range(1, 28)))
+        self.assertEqual([row[0] for row in migrations], list(range(1, 29)))
         self.assertEqual(journal_mode.lower(), "wal")
         self.assertEqual(foreign_keys, 1)
         self.assertTrue(
