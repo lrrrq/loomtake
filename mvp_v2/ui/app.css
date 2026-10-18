@@ -2786,3 +2786,14 @@ button, a, summary { touch-action: manipulation; }
 .workbench-assistant-launcher { z-index:60; }
 .workbench-assistant { z-index:61; }
 @media (min-width:701px) and (max-width:980px) { .workbench-assistant-launcher { bottom:92px; } .workbench-assistant { bottom:148px; max-height:calc(100dvh - 170px); } }
+
+/* Script reading keeps complete editorial copy; image cards remain compact. */
+.workbench-card-grid.is-script-reading { grid-template-columns: minmax(0, 1fr); }
+.workbench-script-copy { display: grid; gap: 14px; margin: 0; }
+.workbench-script-copy > div { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; }
+.workbench-script-copy dt { color: var(--muted); font-size: 12px; line-height: 1.85; }
+.workbench-script-copy dd { margin: 0; font-size: 14px; line-height: 1.85; color: var(--black); white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .workbench-script-copy > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .creative-edit-mode { flex-wrap: wrap; }
+}
