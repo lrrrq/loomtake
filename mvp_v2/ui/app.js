@@ -12435,12 +12435,35 @@ function workbenchModel() {
   if (creative ? Boolean(view.data) : Boolean(state.formalScript)) for (const key of selected) if (!existingIds.has(key)) selected.delete(key);
   const query = (creative ? view.search : view.filter || '').trim().toLocaleLowerCase();
   const id = item => creative ? item.block_id : item.shot_id;
-  const value = (item, field) => creative ? view.dirty.get(`${id(item)}:${field}`)?.value ?? item.fields?.[field] ?? ''
-    : state.formalScriptDirtyCells.get(`${id(item)}:${field}`)?.value ?? item[field] ?? '';
-  const filtered = items.filter(item => !query || `${item.shot_no} ${creative ? Object.values(item.fields || {}).join(' ') : [item.structure, value(item, 'visual'), value(item, 'sound')].join(' ')}`.toLocaleLowerCase().includes(query));
+  const localChanges = creative ? view.dirty : formalScriptLocalChanges();
+  const value = (item, field) => {
+    const key = `${id(item)}:${field}`;
+    const pending = localChanges.get(key) || (!creative && state.formalScriptSaveInFlightPending?.key === key ? state.formalScriptSaveInFlightPending : null);
+    return pending?.value ?? (creative ? item.fields?.[field] : item[field]) ?? '';
+  };
+  const filtered = items.filter(item => {
+    if (!query) return true;
+    const fields = creative
+      ? [...new Set([...Object.keys(item.fields || {}), '段落', '画面描述', '声音', '旁白', '字幕', '备注'])]
+      : ['structure', 'visual', 'sound', 'voiceover', 'subtitle', 'notes'];
+    return `${item.shot_no} ${fields.map(field => value(item, field)).join(' ')}`.toLocaleLowerCase().includes(query);
+  });
   const pages = Math.max(1, Math.ceil(filtered.length / 6));
   view.page = Math.min(Math.max(1, view.page || 1), pages);
   return { creative, view, items, selected, filtered, id, value, pages, visible: filtered.slice((view.page - 1) * 6, view.page * 6) };
+}
+
+function workbenchScriptBody(model, item) {
+  const {creative, value} = model;
+  const fields = creative
+    ? [['画面描述', '画面'], ['声音', '声音'], ['旁白', '旁白'], ['字幕', '字幕']]
+    : [['visual', '画面'], ['sound', '声音'], ['voiceover', '旁白'], ['subtitle', '字幕']];
+  return `<dl class="workbench-script-copy">${fields.map(([field, label], index) => {
+    const text = String(value(item, field));
+    // Only the required picture field needs an empty-state prompt.
+    if (index && !text.trim()) return '';
+    return `<div><dt>${label}</dt><dd>${escapeHtml(text.trim() ? text : '画面描述待补充')}</dd></div>`;
+  }).join('')}</dl>`;
 }
 
 function renderWorkbenchCards() {
@@ -12474,7 +12497,6 @@ function renderWorkbenchCards() {
     const key = id(item), no = item.shot_no;
     const title = value(item, creative ? '段落' : 'structure') || `${noun} ${no}`;
     const visual = value(item, creative ? '画面描述' : 'visual');
-    const audio = value(item, creative ? '声音' : 'sound');
     const duration = value(item, creative ? '时长' : 'duration_seconds');
     const refs = creative ? (view.data?.image_references || []).filter(ref => ref.block_id === key) : [];
     const primary = refs.find(ref => ref.primary) || refs[0];
@@ -12483,9 +12505,9 @@ function renderWorkbenchCards() {
     const protectedItem = creative ? view.data?.protected_block_ids?.includes(key) : item.assistant_locked;
     const imageState = creative ? refs.length ? `${refs.length} 张参考图` : '待配参考图' : creativeImageStatus(imageShot);
     const imageMarkup = `<div class="workbench-card-image"${primary ? ` data-workbench-reference="${escapeHtml(primary.reference_id || primary.task_id)}"` : ''}>${display.url ? `<img src="${escapeHtml(display.url)}" alt="第 ${escapeHtml(no)} 镜配图" loading="lazy">` : `<span>${escapeHtml(primary ? '正在读取参考图…' : images ? '尚未选用图片' : '待配图')}</span>`}</div>`;
-    return `<article class="workbench-card${selected.has(key) ? ' is-selected' : ''}${images ? ' is-image-card' : ''}" data-workbench-card="${escapeHtml(key)}"><header><label><input type="checkbox" data-workbench-select-item="${escapeHtml(key)}" aria-label="选择第 ${escapeHtml(no)} ${noun}"${selected.has(key) ? ' checked' : ''}><span>${String(no).padStart(2, '0')}</span></label><small>${escapeHtml(duration || '时长待定')}${duration && !String(duration).includes('秒') ? ' 秒' : ''}</small>${protectedItem ? '<span class="workbench-protected">已保护</span>' : ''}</header>${images ? imageMarkup : ''}<div class="workbench-card-content"><h3>${escapeHtml(title)}</h3><p class="workbench-card-visual">${escapeHtml(visual || '画面描述待补充')}</p>${!images ? `<p class="workbench-card-audio"><span>声音</span>${escapeHtml(audio || '待补充')}</p>` : ''}</div><footer><span>${escapeHtml(imageState)}</span><div><button type="button" class="text-button" data-workbench-open="${escapeHtml(key)}">${images && !creative ? '核对配图' : '编辑'}</button>${creative ? `<button type="button" class="secondary-button compact" data-workbench-first-picker="${escapeHtml(key)}">${refs.length ? '调整参考图' : '选图'}</button>` : images ? `<button type="button" class="secondary-button compact" data-workbench-picker="${escapeHtml(key)}">选图</button>` : ''}</div></footer></article>`;
+    return `<article class="workbench-card${selected.has(key) ? ' is-selected' : ''}${images ? ' is-image-card' : ''}" data-workbench-card="${escapeHtml(key)}"><header><label><input type="checkbox" data-workbench-select-item="${escapeHtml(key)}" aria-label="选择第 ${escapeHtml(no)} ${noun}"${selected.has(key) ? ' checked' : ''}><span>${String(no).padStart(2, '0')}</span></label><small>${escapeHtml(duration || '时长待定')}${duration && !String(duration).includes('秒') ? ' 秒' : ''}</small>${protectedItem ? '<span class="workbench-protected">已保护</span>' : ''}</header>${images ? imageMarkup : ''}<div class="workbench-card-content"><h3>${escapeHtml(title)}</h3>${images ? `<p class="workbench-card-visual">${escapeHtml(visual || '画面描述待补充')}</p>` : workbenchScriptBody(model, item)}</div><footer><span>${escapeHtml(imageState)}</span><div><button type="button" class="text-button" data-workbench-open="${escapeHtml(key)}">${images && !creative ? '核对配图' : '编辑'}</button>${creative ? `<button type="button" class="secondary-button compact" data-workbench-first-picker="${escapeHtml(key)}">${refs.length ? '调整参考图' : '选图'}</button>` : images ? `<button type="button" class="secondary-button compact" data-workbench-picker="${escapeHtml(key)}">选图</button>` : ''}</div></footer></article>`;
   }).join('');
-  host.innerHTML = toolbar + `<div class="workbench-card-grid">${cards || '<div class="workbench-empty">没有匹配内容，调整筛选即可。</div>'}</div><nav class="workbench-pagination" aria-label="${images ? '配图' : '脚本'}卡片分页"><button type="button" class="secondary-button compact" data-workbench-page="-1"${view.page <= 1 ? ' disabled' : ''}>上一页</button><span>第 ${view.page} / ${pages} 页</span><button type="button" class="secondary-button compact" data-workbench-page="1"${view.page >= pages ? ' disabled' : ''}>下一页</button></nav><div class="workbench-bulkbar"${selected.size ? '' : ' hidden'}><strong>已选 ${selected.size} ${noun}${outside ? ` · 筛选外 ${outside}` : ''}</strong><button type="button" class="primary-button compact" data-workbench-bulk="assistant">助手修改</button><button type="button" class="secondary-button compact" data-workbench-bulk="images">推荐配图</button><button type="button" class="text-button" data-workbench-bulk="protect">保护所选</button><button type="button" class="text-button" data-workbench-bulk="unprotect">解除保护</button></div>`;
+  host.innerHTML = toolbar + `<div class="workbench-card-grid${images ? '' : ' is-script-reading'}">${cards || '<div class="workbench-empty">没有匹配内容，调整筛选即可。</div>'}</div><nav class="workbench-pagination" aria-label="${images ? '配图' : '脚本'}卡片分页"><button type="button" class="secondary-button compact" data-workbench-page="-1"${view.page <= 1 ? ' disabled' : ''}>上一页</button><span>第 ${view.page} / ${pages} 页</span><button type="button" class="secondary-button compact" data-workbench-page="1"${view.page >= pages ? ' disabled' : ''}>下一页</button></nav><div class="workbench-bulkbar"${selected.size ? '' : ' hidden'}><strong>已选 ${selected.size} ${noun}${outside ? ` · 筛选外 ${outside}` : ''}</strong><button type="button" class="primary-button compact" data-workbench-bulk="assistant">助手修改</button><button type="button" class="secondary-button compact" data-workbench-bulk="images">推荐配图</button><button type="button" class="text-button" data-workbench-bulk="protect">保护所选</button><button type="button" class="text-button" data-workbench-bulk="unprotect">解除保护</button></div>`;
   if (creative) for (const node of host.querySelectorAll('[data-workbench-reference]')) {
     const ref = view.data.image_references.find(item => (item.reference_id || item.task_id) === node.dataset.workbenchReference);
     if (ref?.preview_url) void requestFormalPreview(ref.preview_url, {owner: `creative-first:${view.projectId}`, priority: 1}).then(url => {
@@ -12610,7 +12632,7 @@ document.addEventListener('click', async event => {
     const key = target.dataset.workbenchOpen || target.dataset.workbenchPicker;
     view.editMode = 'shot';
     if (creative) { if (formalRoute().panel === 'images') await changeCreativePanel('script'); selectFirstCreativeBlock(view, key); }
-    else { view.imageDetail = formalRoute().panel === 'images'; selectCreativeShot(key); if (target.dataset.workbenchPicker) openCreativeImagePicker(); }
+    else { view.imageDetail = formalRoute().panel === 'images'; selectCreativeShot(key, {focus: !view.imageDetail, field: 'visual'}); if (target.dataset.workbenchPicker) openCreativeImagePicker(); }
   }
   const bulk = target.dataset.workbenchBulk;
   if (bulk === 'assistant') await openWorkbenchAssistant('selected');
